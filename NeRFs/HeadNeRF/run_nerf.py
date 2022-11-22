@@ -243,23 +243,31 @@ def create_nerf(args):
             args.multires_views, args.i_embed)
     output_ch = 5 if args.N_importance > 0 else 4
     skips = [4]
-    model = FaceNeRF(D=args.netdepth, W=args.netwidth,
-                     input_ch=input_ch, dim_aud=args.dim_aud,
-                     output_ch=output_ch, skips=skips,
-                     input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
+    # model = FaceNeRF(D=args.netdepth, W=args.netwidth,
+    #                  input_ch=input_ch, dim_aud=args.dim_aud,
+    #                  output_ch=output_ch, skips=skips,
+    #                  input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
+
+    model = NeRF.get_by_name(args.nerf_type, D=args.netdepth, W=args.netwidth,
+                input_ch=input_ch, dim_aud=args.dim_aud, output_ch=output_ch, skips=skips,
+                input_ch_views=input_ch_views,
+                use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
+
     grad_vars = list(model.parameters())
 
     model_fine = None
+
     if args.N_importance > 0:
-        model_fine = FaceNeRF(D=args.netdepth_fine, W=args.netwidth_fine,
-                              input_ch=input_ch, dim_aud=args.dim_aud,
-                              output_ch=output_ch, skips=skips,
-                              input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
+        model_fine = NeRF.get_by_name(args.nerf_type, D=args.netdepth, W=args.netwidth,
+                input_ch=input_ch, dim_aud=args.dim_aud, output_ch=output_ch, skips=skips,
+                input_ch_views=input_ch_views,
+                use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
+
         grad_vars += list(model_fine.parameters())
 
     def network_query_fn(inputs, viewdirs, aud_para, network_fn): \
         return run_network(inputs, viewdirs, aud_para, network_fn,
-                           embed_fn=embed_fn, embeddirs_fn=embeddirs_fn, netchunk=args.netchunk)
+                            embed_fn=embed_fn, embeddirs_fn=embeddirs_fn, netchunk=args.netchunk)
 
     # Create optimizer
     optimizer = torch.optim.Adam(
@@ -514,6 +522,8 @@ def config_parser():
                         help='input data directory')
 
     # training options
+    parser.add_argument("--nerf_type", type=str, default="ad-nerf",
+                        help='nerf network type')
     parser.add_argument("--netdepth", type=int, default=8,
                         help='layers in network')
     parser.add_argument("--netwidth", type=int, default=256,
@@ -544,6 +554,8 @@ def config_parser():
     # rendering options
     parser.add_argument("--N_samples", type=int, default=64,
                         help='number of coarse samples per ray')
+    parser.add_argument("--not_zero_canonical", action='store_true',
+                        help='if set zero time is not the canonic space')
     parser.add_argument("--N_importance", type=int, default=128,
                         help='number of additional fine samples per ray')
     parser.add_argument("--perturb", type=float, default=1.,
