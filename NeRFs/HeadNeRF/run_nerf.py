@@ -660,7 +660,7 @@ def train():
         if args.with_test == 1:
             poses, auds, bc_img, hwfcxy = \
                 load_audface_data(args.datadir, args.testskip,
-                                  args.test_file, args.aud_file)
+                                    args.test_file, args.aud_file)
             images = np.zeros(1)
         else:
             images, poses, auds, bc_img, hwfcxy, sample_rects, mouth_rects, i_split = load_audface_data(
@@ -814,6 +814,10 @@ def train():
             rect = sample_rects[img_i]
             mouth_rect = mouth_rects[img_i]
             aud = auds[img_i]
+
+
+            
+
             if global_step >= args.nosmo_iters:
                 smo_half_win = int(args.smo_size / 2)
                 left_i = img_i - smo_half_win
@@ -857,6 +861,9 @@ def train():
                         0, H-1, H), torch.linspace(0, W-1, W)), -1)  # (H, W, 2)
 
                 coords = torch.reshape(coords, [-1, 2])  # (H * W, 2)
+                print('coords.shape:', coords.shape)
+                print('coords:', coords)
+
                 if args.sample_rate > 0:
                     rect_inds = (coords[:, 0] >= rect[0]) & (
                         coords[:, 0] <= rect[0] + rect[2]) & (
@@ -882,6 +889,9 @@ def train():
                         coords.shape[0], size=[N_rand], replace=False)  # (N_rand,)
                     select_coords = coords[select_inds].long()
 
+                # print('select_coords.shape:', select_coords.shape)
+                # print('select_coords:', select_coords)
+
                 rays_o = rays_o[select_coords[:, 0],
                                 select_coords[:, 1]]  # (N_rand, 3)
                 rays_d = rays_d[select_coords[:, 0],
@@ -891,6 +901,40 @@ def train():
                                   select_coords[:, 1]]  # (N_rand, 3)
                 bc_rgb = bc_img[select_coords[:, 0],
                                 select_coords[:, 1]]
+
+
+        print('target.cpu().shape:', target.cpu().shape)
+        target_rgb8 = to8b(target.cpu().numpy())
+        imageio.imwrite('target_rgb8.png', target_rgb8)
+
+        print('rect_inds.shape:', rect_inds.shape)
+        print('rect_inds:', rect_inds)
+
+        # print('target.shape:', target.shape)
+        # print('target:', target)
+
+        # print('select_coords.shape:', select_coords.shape)
+        # print('select_coords[:, 0].shape:', select_coords[:, 0].shape)
+        # print('select_coords[:, 1].shape:', select_coords[:, 1].shape)
+        print('rect:', rect)
+        target_coords_rect = target[coords_rect[:, 0].long(),
+                                    coords_rect[:, 1].long()]  # (N_rand, 3)
+        print('coords_rect.shape:', coords_rect.shape)
+        # print('coords_rect:', coords_rect)
+        print('target_coords_rect.shape', target_coords_rect.shape)
+        # print('target[coords_rect.long(), :].shape', target[coords_rect.long(), :].shape)
+        target_coords_rect = torch.reshape(target_coords_rect, [rect[2] + 1, rect[3] + 1, 3])
+        target_coords_rect_rgb8 = to8b(target_coords_rect.cpu().numpy())
+
+        print('target_coords_rect_rgb8.shape:', target_coords_rect_rgb8.shape)
+        print('target_coords_rect_rgb8:', target_coords_rect_rgb8)
+        
+        imageio.imwrite('target_coords_rect_rgb8.png', target_coords_rect_rgb8)
+        print('='*20)
+        time.sleep(3)
+        # coords_rect
+        # target_coords_rect_rgb8 = to8b(target[rect_inds].cpu().numpy())
+        # imageio.imwrite('target_coords_rect_rgb8.png', target_coords_rect_rgb8)
 
         #####  Core optimization loop  #####
         if global_step >= args.nosmo_iters:
