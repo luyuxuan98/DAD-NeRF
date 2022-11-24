@@ -35,14 +35,17 @@ def run_network(inputs, viewdirs, aud_para, fn, embed_fn, embeddirs_fn, netchunk
     """
     inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
     embedded = embed_fn(inputs_flat)
+    # print('aud_para.shape:', aud_para.shape)
     aud = aud_para.unsqueeze(0).expand(inputs_flat.shape[0], -1)
+    # print('aud.shape:', aud.shape)
     embedded = torch.cat((embedded, aud), -1)
     if viewdirs is not None:
         input_dirs = viewdirs[:, None].expand(inputs.shape)
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         embedded = torch.cat([embedded, embedded_dirs], -1)
-
+    print('embedded.shape:', embedded.shape)
+    print('embedded:', embedded)
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = torch.reshape(outputs_flat, list(
         inputs.shape[:-1]) + [outputs_flat.shape[-1]])
@@ -249,17 +252,18 @@ def create_nerf(args):
     #                  input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
 
     model = NeRF.get_by_name(args.nerf_type, D=args.netdepth, W=args.netwidth,
-                input_ch=input_ch, dim_aud=args.dim_aud, output_ch=output_ch, skips=skips,
+                input_ch=input_ch, input_ch_aud=args.dim_aud, output_ch=output_ch, skips=skips,
                 input_ch_views=input_ch_views,
                 use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
-
+    print('model:', model)
+    # print('output_ch:', output_ch)
     grad_vars = list(model.parameters())
 
     model_fine = None
 
     if args.N_importance > 0:
         model_fine = NeRF.get_by_name(args.nerf_type, D=args.netdepth, W=args.netwidth,
-                input_ch=input_ch, dim_aud=args.dim_aud, output_ch=output_ch, skips=skips,
+                input_ch=input_ch, input_ch_aud=args.dim_aud, output_ch=output_ch, skips=skips,
                 input_ch_views=input_ch_views,
                 use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
 
@@ -468,6 +472,15 @@ def render_rays(ray_batch,
         z_vals = lower + (upper - lower) * t_rand
     pts = rays_o[..., None, :] + rays_d[..., None, :] * \
         z_vals[..., :, None]  # [N_rays, N_samples, 3]
+
+    # position_delta = None
+    # 为了适配两种输出
+    # result = network_query_fn(pts, viewdirs, aud_para, network_fn)
+    # if len(result) == 2:
+    #     raw, position_delta = result
+    # else:
+    #     raw = result[0]
+    # 为了适配两种输出。到这为止
     raw = network_query_fn(pts, viewdirs, aud_para, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
         raw, z_vals, rays_d, bc_rgb, raw_noise_std, white_bkgd, pytest=pytest)
@@ -486,12 +499,23 @@ def render_rays(ray_batch,
             z_vals[..., :, None]  # [N_rays, N_samples + N_importance, 3]
 
         run_fn = network_fn if network_fine is None else network_fine
+        
+        # # 为了适配两种输出
+        # result = network_query_fn(pts, viewdirs, aud_para, network_fn)
+        # if len(result) == 2:
+        #     raw, position_delta = result
+        # else:
+        #     raw = result[0]
+        # # 为了适配两种输出。到这为止
         raw = network_query_fn(pts, viewdirs, aud_para, run_fn)
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
             raw, z_vals, rays_d, bc_rgb, raw_noise_std, white_bkgd, pytest=pytest)
 
     ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map}
+    # #有形变登记形变
+    # if position_delta:
+    #     ret['position_delta'] = position_delta
     if retraw:
         ret['raw'] = raw
     if N_importance > 0:
@@ -666,6 +690,7 @@ def train():
             images, poses, auds, bc_img, hwfcxy, sample_rects, mouth_rects, i_split = load_audface_data(
                 args.datadir, args.testskip)
         print('Loaded audface', images.shape, hwfcxy, args.datadir)
+        print('auds.shape:', auds.shape)
         if args.with_test == 0:
             i_train, i_val = i_split
 
@@ -814,7 +839,8 @@ def train():
             rect = sample_rects[img_i]
             mouth_rect = mouth_rects[img_i]
             aud = auds[img_i]
-
+            # print('auds.shape:', auds.shape)
+            # print('aud.shape:', aud.shape)
 
             
 
@@ -840,7 +866,9 @@ def train():
                 aud = auds_win[smo_half_win]
                 aud_smo = AudAttNet(auds_win)
             else:
+                # print('aud.shape:', aud.shape)
                 aud = AudNet(aud.unsqueeze(0))
+                # print('aud.shape:', aud.shape)
             if N_rand is not None:
                 rays_o, rays_d = get_rays(
                     H, W, focal, torch.Tensor(pose), cx, cy)  # (H, W, 3), (H, W, 3)
@@ -861,14 +889,13 @@ def train():
                         0, H-1, H), torch.linspace(0, W-1, W)), -1)  # (H, W, 2)
 
                 coords = torch.reshape(coords, [-1, 2])  # (H * W, 2)
-                print('coords.shape:', coords.shape)
-                print('coords:', coords)
 
                 if args.sample_rate > 0:
                     rect_inds = (coords[:, 0] >= rect[0]) & (
                         coords[:, 0] <= rect[0] + rect[2]) & (
                             coords[:, 1] >= rect[1]) & (
                                 coords[:, 1] <= rect[1] + rect[3])
+
                     coords_rect = coords[rect_inds]
                     coords_norect = coords[~rect_inds]
                     rect_num = int(N_rand*args.sample_rate)
@@ -889,9 +916,6 @@ def train():
                         coords.shape[0], size=[N_rand], replace=False)  # (N_rand,)
                     select_coords = coords[select_inds].long()
 
-                # print('select_coords.shape:', select_coords.shape)
-                # print('select_coords:', select_coords)
-
                 rays_o = rays_o[select_coords[:, 0],
                                 select_coords[:, 1]]  # (N_rand, 3)
                 rays_d = rays_d[select_coords[:, 0],
@@ -902,27 +926,24 @@ def train():
                 bc_rgb = bc_img[select_coords[:, 0],
                                 select_coords[:, 1]]
 
-
+        '''看一下crop主要渲染的图片的区域
         print('target.cpu().shape:', target.cpu().shape)
         target_rgb8 = to8b(target.cpu().numpy())
         imageio.imwrite('target_rgb8.png', target_rgb8)
 
+        from PIL import Image
+        img = Image.fromarray(target_rgb8)
+        target_rgb8_crop = img.crop([rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3]])
+        imageio.imwrite('target_rgb8_just_crop.png', target_rgb8_crop)
+
         print('rect_inds.shape:', rect_inds.shape)
         print('rect_inds:', rect_inds)
 
-        # print('target.shape:', target.shape)
-        # print('target:', target)
-
-        # print('select_coords.shape:', select_coords.shape)
-        # print('select_coords[:, 0].shape:', select_coords[:, 0].shape)
-        # print('select_coords[:, 1].shape:', select_coords[:, 1].shape)
         print('rect:', rect)
-        target_coords_rect = target[coords_rect[:, 0].long(),
-                                    coords_rect[:, 1].long()]  # (N_rand, 3)
+        target_coords_rect = target[coords_rect[:, 1].long(),
+                                    coords_rect[:, 0].long()]  # (N_rand, 3)
         print('coords_rect.shape:', coords_rect.shape)
-        # print('coords_rect:', coords_rect)
         print('target_coords_rect.shape', target_coords_rect.shape)
-        # print('target[coords_rect.long(), :].shape', target[coords_rect.long(), :].shape)
         target_coords_rect = torch.reshape(target_coords_rect, [rect[2] + 1, rect[3] + 1, 3])
         target_coords_rect_rgb8 = to8b(target_coords_rect.cpu().numpy())
 
@@ -932,9 +953,7 @@ def train():
         imageio.imwrite('target_coords_rect_rgb8.png', target_coords_rect_rgb8)
         print('='*20)
         time.sleep(3)
-        # coords_rect
-        # target_coords_rect_rgb8 = to8b(target[rect_inds].cpu().numpy())
-        # imageio.imwrite('target_coords_rect_rgb8.png', target_coords_rect_rgb8)
+        '''
 
         #####  Core optimization loop  #####
         if global_step >= args.nosmo_iters:
