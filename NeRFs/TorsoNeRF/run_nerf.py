@@ -12,8 +12,10 @@ import torch.nn.functional as F
 from tqdm import tqdm, trange
 from natsort import natsorted
 import cv2
-
+import wave
 from run_nerf_helpers import *
+import subprocess
+
 
 device = torch.device('cuda', 0)
 device_torso = torch.device('cuda', 0)
@@ -862,7 +864,20 @@ def train():
                 device_torso), embed_et.squeeze()), dim=-1)
             t_start = time.time()
             vid_out = cv2.VideoWriter(os.path.join(testsavedir, 'result.avi'),
-                                      cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 25, (W, H))
+                                        cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 25, (W, H))
+            
+
+
+
+
+            
+
+
+
+
+
+
+
             for j in range(poses.shape[0]):
                 rgbs, disps, last_weights, rgb_fgs = \
                     render_path(adjust_poses[j:j+1], auds_val[j:j+1],
@@ -879,6 +894,12 @@ def train():
                 print('finished render', j)
             print('finished render in', time.time()-t_start)
             vid_out.release()
+
+            # cmd = 'ffmpeg -i ' + args.datadir + '/aud_cutted.wav' + '-i' + os.path.join(testsavedir, 'result.avi')
+            cmd = 'ffmpeg ' + '-i ' + os.path.join(testsavedir, 'result.avi') + ' -i ' +  args.datadir + '/aud_cutted.wav ' + '-c:v copy -c:a aac -strict experimental ' + os.path.join(testsavedir, '0000result_with_aud.avi')
+            print('cmd:', cmd)
+            subprocess.call(cmd)
+            print('vide with aud done!!!')
             return
 
     N_rand = args.N_rand
