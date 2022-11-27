@@ -291,28 +291,42 @@ def render_path(render_poses, aud_paras, bc_img, hwfcxy,
 def create_nerf(args, ext, dim_aud, device_spec=torch.device('cuda', 0), with_audatt=False):
     """Instantiate NeRF's MLP model.
     """
+    # embed_fn, input_ch = get_embedder(
+    #     args.multires, args.i_embed, device=device_spec)
     embed_fn, input_ch = get_embedder(
-        args.multires, args.i_embed, device=device_spec)
+        args.multires, args.i_embed)
 
     input_ch_views = 0
     embeddirs_fn = None
     if args.use_viewdirs:
+        # embeddirs_fn, input_ch_views = get_embedder(
+        #     args.multires_views, args.i_embed, device=device_spec)
         embeddirs_fn, input_ch_views = get_embedder(
-            args.multires_views, args.i_embed, device=device_spec)
+            args.multires_views, args.i_embed)
     output_ch = 5 if args.N_importance > 0 else 4
     skips = [4]
-    model = FaceNeRF(D=args.netdepth, W=args.netwidth,
-                     input_ch=input_ch, dim_aud=dim_aud,
-                     output_ch=output_ch, skips=skips,
-                     input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device_spec)
+    # model = FaceNeRF(D=args.netdepth, W=args.netwidth,
+    #                  input_ch=input_ch, dim_aud=dim_aud,
+    #                  output_ch=output_ch, skips=skips,
+    #                  input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device_spec)
+    model = NeRF.get_by_name(args.nerf_type, D=args.netdepth, W=args.netwidth,
+                input_ch=input_ch, input_ch_aud=dim_aud, output_ch=output_ch, skips=skips,
+                input_ch_views=input_ch_views,
+                use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
+    # print('model:', model)
     grad_vars = list(model.parameters())
 
     model_fine = None
     if args.N_importance > 0:
-        model_fine = FaceNeRF(D=args.netdepth_fine, W=args.netwidth_fine,
-                              input_ch=input_ch, dim_aud=dim_aud,
-                              output_ch=output_ch, skips=skips,
-                              input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device_spec)
+        # model_fine = FaceNeRF(D=args.netdepth_fine, W=args.netwidth_fine,
+        #                       input_ch=input_ch, dim_aud=dim_aud,
+        #                       output_ch=output_ch, skips=skips,
+        #                       input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device_spec)
+        model_fine = NeRF.get_by_name(args.nerf_type, D=args.netdepth, W=args.netwidth,
+                input_ch=input_ch, input_ch_aud=dim_aud, output_ch=output_ch, skips=skips,
+                input_ch_views=input_ch_views,
+                use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
+        # print('model_fine:', model_fine)
         grad_vars += list(model_fine.parameters())
 
     def network_query_fn(inputs, viewdirs, aud_para, network_fn): \
@@ -347,6 +361,7 @@ def create_nerf(args, ext, dim_aud, device_spec=torch.device('cuda', 0), with_au
         ckpt = torch.load(ckpt_path, map_location=device)
 
         start = ckpt['global_step']
+        # print('optimizer:', optimizer)
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         AudNet_state = ckpt['network_audnet_state_dict']
         optimizer_aud_state = ckpt['optimizer_aud_state_dict']
@@ -577,6 +592,8 @@ def config_parser():
                         help='input data directory')
 
     # training options
+    parser.add_argument("--nerf_type", type=str, default="d-nerf",
+                        help='nerf network type')
     parser.add_argument("--netdepth", type=int, default=8,
                         help='layers in network')
     parser.add_argument("--netwidth", type=int, default=256,
@@ -607,6 +624,8 @@ def config_parser():
     # rendering options
     parser.add_argument("--N_samples", type=int, default=64,
                         help='number of coarse samples per ray')
+    parser.add_argument("--not_zero_canonical", action='store_true',
+                        help='if set zero time is not the canonic space')
     parser.add_argument("--N_importance", type=int, default=128,
                         help='number of additional fine samples per ray')
     parser.add_argument("--perturb", type=float, default=1.,

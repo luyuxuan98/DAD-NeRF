@@ -44,8 +44,8 @@ def run_network(inputs, viewdirs, aud_para, fn, embed_fn, embeddirs_fn, netchunk
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         embedded = torch.cat([embedded, embedded_dirs], -1)
-    print('embedded.shape:', embedded.shape)
-    print('embedded:', embedded)
+    # print('embedded.shape:', embedded.shape)
+    # print('embedded:', embedded)
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = torch.reshape(outputs_flat, list(
         inputs.shape[:-1]) + [outputs_flat.shape[-1]])
@@ -266,7 +266,7 @@ def create_nerf(args):
                 input_ch=input_ch, input_ch_aud=args.dim_aud, output_ch=output_ch, skips=skips,
                 input_ch_views=input_ch_views,
                 use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
-
+        print('model_fine:', model_fine)
         grad_vars += list(model_fine.parameters())
 
     def network_query_fn(inputs, viewdirs, aud_para, network_fn): \
@@ -302,6 +302,7 @@ def create_nerf(args):
         ckpt = torch.load(ckpt_path)
 
         start = ckpt['global_step']
+        print('optimizer:', optimizer)
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         AudNet_state = ckpt['network_audnet_state_dict']
         optimizer_aud_state = ckpt['optimizer_aud_state_dict']

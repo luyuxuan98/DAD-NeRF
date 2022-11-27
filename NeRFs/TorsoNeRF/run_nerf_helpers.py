@@ -8,11 +8,7 @@ torch.autograd.set_detect_anomaly(True)
 
 
 # Misc
-def img2mse(x, y, num=0):
-    if num > 0:
-        return torch.mean((x[num] - y[num]) ** 2)
-    else:
-        return torch.mean((x - y) ** 2)
+def img2mse(x, y): return torch.mean((x - y) ** 2)
 
 
 def mse2psnr(x): return -10. * torch.log(x) / torch.log(torch.Tensor([10.]))
@@ -30,7 +26,6 @@ class Embedder:
     def create_embedding_fn(self):
         embed_fns = []
         d = self.kwargs['input_dims']
-        device = self.kwargs['device']
         out_dim = 0
         if self.kwargs['include_input']:
             embed_fns.append(lambda x: x)
@@ -40,11 +35,9 @@ class Embedder:
         N_freqs = self.kwargs['num_freqs']
 
         if self.kwargs['log_sampling']:
-            freq_bands = 2.**torch.linspace(0.,
-                                            max_freq, steps=N_freqs, device=device)
+            freq_bands = 2.**torch.linspace(0., max_freq, steps=N_freqs)
         else:
-            freq_bands = torch.linspace(
-                2.**0., 2.**max_freq, steps=N_freqs, device=device)
+            freq_bands = torch.linspace(2.**0., 2.**max_freq, steps=N_freqs)
 
         for freq in freq_bands:
             for p_fn in self.kwargs['periodic_fns']:
@@ -59,7 +52,7 @@ class Embedder:
         return torch.cat([fn(inputs) for fn in self.embed_fns], -1)
 
 
-def get_embedder(multires, i=0, device=torch.device('cuda', 0)):
+def get_embedder(multires, i=0):
     if i == -1:
         return nn.Identity(), 3
 
@@ -69,7 +62,6 @@ def get_embedder(multires, i=0, device=torch.device('cuda', 0)):
         'max_freq_log2': multires-1,
         'num_freqs': multires,
         'log_sampling': True,
-        'device': device,
         'periodic_fns': [torch.sin, torch.cos],
     }
 
@@ -108,11 +100,9 @@ class AudioAttNet(nn.Module):
             0)  # 2 x subspace_dim x seq_len
         y = self.attentionConvNet(y)
         y = self.attentionNet(y.view(1, self.seq_len)).view(self.seq_len, 1)
-        #print(y.view(-1).data)
+        # print(y.view(-1).data)
         return torch.sum(y*x, dim=0)
 # Model
-
-# Audio feature extractor
 
 
 # Audio feature extractor
@@ -151,8 +141,8 @@ class AudioNet(nn.Module):
 
 
 class FaceNeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, dim_aud=32,
-                 output_ch=4, skips=[4], use_viewdirs=False):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_aud=64, input_ch_views=3,
+                 output_ch=4, skips=[4], embed_fn=None, use_viewdirs=False):
         """ 
         """
         super(FaceNeRF, self).__init__()
@@ -160,11 +150,11 @@ class FaceNeRF(nn.Module):
         self.W = W
         self.input_ch = input_ch
         self.input_ch_views = input_ch_views
-        self.dim_aud = dim_aud
+        self.dim_aud = input_ch_aud
         self.skips = skips
         self.use_viewdirs = use_viewdirs
 
-        input_ch_all = input_ch + dim_aud
+        input_ch_all = self.input_ch + self.dim_aud
         self.pts_linears = nn.ModuleList(
             [nn.Linear(input_ch_all, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch_all, W) for i in range(D-1)])
 
@@ -249,12 +239,10 @@ class FaceNeRF(nn.Module):
             np.transpose(weights[idx_alpha_linear+1]))
 
 
-# Model
-class NeRF(nn.Module):
-    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips=[4], use_viewdirs=False):
-        """ 
-        """
-        super(NeRF, self).__init__()
+class NeRFOriginal(nn.Module):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, input_ch_aud=76, output_ch=4, skips=[4],
+                    use_viewdirs=False, memory=[], embed_fn=None, output_color_ch=3, zero_canonical=True):
+        super(NeRFOriginal, self).__init__()
         self.D = D
         self.W = W
         self.input_ch = input_ch
@@ -262,27 +250,41 @@ class NeRF(nn.Module):
         self.skips = skips
         self.use_viewdirs = use_viewdirs
 
-        self.pts_linears = nn.ModuleList(
-            [nn.Linear(input_ch, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W) for i in range(D-1)])
+        # self.pts_linears = nn.ModuleList(
+        #     [nn.Linear(input_ch, W)] +
+        #     [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + input_ch, W) for i in range(D-1)])
 
-        # Implementation according to the official code release (https://github.com/bmild/nerf/blob/master/run_nerf_helpers.py#L104-L105)
-        self.views_linears = nn.ModuleList(
-            [nn.Linear(input_ch_views + W, W//2)])
+        layers = [nn.Linear(input_ch, W)]
+        for i in range(D - 1):
+            if i in memory:
+                raise NotImplementedError
+            else:
+                layer = nn.Linear
 
-        # Implementation according to the paper
+            in_channels = W
+            if i in self.skips:
+                in_channels += input_ch
+
+            layers += [layer(in_channels, W)]
+
+        self.pts_linears = nn.ModuleList(layers)
+
+        ### Implementation according to the official code release (https://github.com/bmild/nerf/blob/master/run_nerf_helpers.py#L104-L105)
+        self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W//2)])
+
+        ### Implementation according to the paper
         # self.views_linears = nn.ModuleList(
         #     [nn.Linear(input_ch_views + W, W//2)] + [nn.Linear(W//2, W//2) for i in range(D//2)])
 
         if use_viewdirs:
             self.feature_linear = nn.Linear(W, W)
             self.alpha_linear = nn.Linear(W, 1)
-            self.rgb_linear = nn.Linear(W//2, 3)
+            self.rgb_linear = nn.Linear(W//2, output_color_ch)
         else:
             self.output_linear = nn.Linear(W, output_ch)
 
-    def forward(self, x):
-        input_pts, input_views = torch.split(
-            x, [self.input_ch, self.input_ch_views], dim=-1)
+    def forward(self, x, ts):
+        input_pts, input_views = torch.split(x, [self.input_ch, self.input_ch_views], dim=-1)
         h = input_pts
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
@@ -304,7 +306,7 @@ class NeRF(nn.Module):
         else:
             outputs = self.output_linear(h)
 
-        return outputs
+        return outputs, torch.zeros_like(input_pts[:, :3])
 
     def load_weights_from_keras(self, weights):
         assert self.use_viewdirs, "Not implemented if use_viewdirs=False"
@@ -312,45 +314,122 @@ class NeRF(nn.Module):
         # Load pts_linears
         for i in range(self.D):
             idx_pts_linears = 2 * i
-            self.pts_linears[i].weight.data = torch.from_numpy(
-                np.transpose(weights[idx_pts_linears]))
-            self.pts_linears[i].bias.data = torch.from_numpy(
-                np.transpose(weights[idx_pts_linears+1]))
+            self.pts_linears[i].weight.data = torch.from_numpy(np.transpose(weights[idx_pts_linears]))
+            self.pts_linears[i].bias.data = torch.from_numpy(np.transpose(weights[idx_pts_linears+1]))
 
         # Load feature_linear
         idx_feature_linear = 2 * self.D
-        self.feature_linear.weight.data = torch.from_numpy(
-            np.transpose(weights[idx_feature_linear]))
-        self.feature_linear.bias.data = torch.from_numpy(
-            np.transpose(weights[idx_feature_linear+1]))
+        self.feature_linear.weight.data = torch.from_numpy(np.transpose(weights[idx_feature_linear]))
+        self.feature_linear.bias.data = torch.from_numpy(np.transpose(weights[idx_feature_linear+1]))
 
         # Load views_linears
         idx_views_linears = 2 * self.D + 2
-        self.views_linears[0].weight.data = torch.from_numpy(
-            np.transpose(weights[idx_views_linears]))
-        self.views_linears[0].bias.data = torch.from_numpy(
-            np.transpose(weights[idx_views_linears+1]))
+        self.views_linears[0].weight.data = torch.from_numpy(np.transpose(weights[idx_views_linears]))
+        self.views_linears[0].bias.data = torch.from_numpy(np.transpose(weights[idx_views_linears+1]))
 
         # Load rgb_linear
         idx_rbg_linear = 2 * self.D + 4
-        self.rgb_linear.weight.data = torch.from_numpy(
-            np.transpose(weights[idx_rbg_linear]))
-        self.rgb_linear.bias.data = torch.from_numpy(
-            np.transpose(weights[idx_rbg_linear+1]))
+        self.rgb_linear.weight.data = torch.from_numpy(np.transpose(weights[idx_rbg_linear]))
+        self.rgb_linear.bias.data = torch.from_numpy(np.transpose(weights[idx_rbg_linear+1]))
 
         # Load alpha_linear
         idx_alpha_linear = 2 * self.D + 6
-        self.alpha_linear.weight.data = torch.from_numpy(
-            np.transpose(weights[idx_alpha_linear]))
-        self.alpha_linear.bias.data = torch.from_numpy(
-            np.transpose(weights[idx_alpha_linear+1]))
+        self.alpha_linear.weight.data = torch.from_numpy(np.transpose(weights[idx_alpha_linear]))
+        self.alpha_linear.bias.data = torch.from_numpy(np.transpose(weights[idx_alpha_linear+1]))
+
+
+
+# Model
+class DirectTemporalNeRF(nn.Module):
+    def __init__(self, D=8, W=256, input_ch=3, input_ch_views=3, input_ch_aud=64, output_ch=4, skips=[4],
+                use_viewdirs=False, memory=[], embed_fn=None, zero_canonical=True):
+        super(DirectTemporalNeRF, self).__init__()
+        self.D = D
+        self.W = W
+        self.input_ch = input_ch
+        self.input_ch_views = input_ch_views
+        self.input_ch_aud = input_ch_aud
+        self.skips = skips
+        self.use_viewdirs = use_viewdirs
+        self.memory = memory
+        self.embed_fn = embed_fn
+        self.zero_canonical = zero_canonical
+
+        self._occ = NeRFOriginal(D=D, W=W, input_ch=input_ch, input_ch_views=input_ch_views,
+                                input_ch_aud=input_ch_aud, output_ch=output_ch, skips=skips,
+                                use_viewdirs=use_viewdirs, memory=memory, embed_fn=embed_fn, output_color_ch=3)
+        self._time, self._time_out = self.create_time_net()
+
+    def create_time_net(self):
+        layers = [nn.Linear(self.input_ch + self.input_ch_aud, self.W)]
+        for i in range(self.D - 1):
+            if i in self.memory:
+                raise NotImplementedError
+            else:
+                layer = nn.Linear
+
+            in_channels = self.W
+            if i in self.skips:
+                in_channels += self.input_ch
+
+            layers += [layer(in_channels, self.W)]
+        return nn.ModuleList(layers), nn.Linear(self.W, 3)
+
+    def query_time(self, new_pts, t, net, net_final):
+        h = torch.cat([new_pts, t], dim=-1)
+        for i, l in enumerate(net):
+            h = net[i](h)
+            h = F.relu(h)
+            if i in self.skips:
+                h = torch.cat([new_pts, h], -1)
+
+        return net_final(h)
+
+    def forward(self, x):
+        input_pts, input_aud, input_views = torch.split(x, [self.input_ch, self.input_ch_aud, self.input_ch_views], dim=-1)
+        
+        # print('='*40)
+        # print('start DirectTemporalNeRF forward...')
+        # print('x.shape:', x.shape)
+        # print('input_pts.shape:', input_pts.shape)
+        # print('input_aud.shape:', input_aud.shape)
+        # print('input_views.shape:', input_views.shape)
+
+        # print('start cal dx...')
+        dx = self.query_time(input_pts, input_aud, self._time, self._time_out)
+        # print('dx cal done...')
+        input_pts_orig = input_pts[:, :3]
+        input_pts = self.embed_fn(input_pts_orig + dx)
+        # print('start cal occ...')
+        out, _ = self._occ(torch.cat([input_pts, input_views], dim=-1), input_aud)
+        # print('occ cal done...')
+        # print('out.shape:', out.shape)
+        # print('dx.shape:', dx.shape)
+        
+        # return torch.cat([out, dx], -1)
+        return out
+        # return out, dx
+
+
+class NeRF:
+    @staticmethod
+    def get_by_name(type,  *args, **kwargs):
+        print ("NeRF type selected: %s" % type)
+
+        if type == "ad-nerf":
+            model = FaceNeRF(*args, **kwargs)
+        elif type == "d-nerf":
+            model = DirectTemporalNeRF(*args, **kwargs)
+        else:
+            raise ValueError("Type %s not recognized." % type)
+        return model
 
 
 # Ray helpers
 def get_rays(H, W, focal, c2w, cx=None, cy=None, device_cur=torch.device('cuda', 0)):
     # pytorch's meshgrid has indexing='ij'
     i, j = torch.meshgrid(torch.linspace(0, W-1, W, device=device_cur, dtype=torch.float32),
-                          torch.linspace(0, H-1, H, device=device_cur, dtype=torch.float32))
+                            torch.linspace(0, H-1, H, device=device_cur, dtype=torch.float32))
     i = i.t()
     j = j.t()
     if cx is None:
@@ -405,7 +484,37 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
     return rays_o, rays_d
 
 
+def cal_lap_loss(tensor_list, weight_list):
+    lap_kernel = torch.Tensor(
+        (-0.5, 1.0, -0.5)).unsqueeze(0).unsqueeze(0).float().to(tensor_list[0].device)
+    loss_lap = 0
+    for i in range(len(tensor_list)):
+        in_tensor = tensor_list[i]
+        in_tensor = in_tensor.view(-1, 1, in_tensor.shape[-1])
+        out_tensor = F.conv1d(in_tensor, lap_kernel)
+        loss_lap += torch.mean(out_tensor**2)*weight_list[i]
+    return loss_lap
+
+
+def DCTBasis(k, N):
+    assert(k < N)
+    basis = torch.tensor([np.pi*(float(n)+0.5)*k/float(N)
+                          for n in range(N)]).float()
+    basis = torch.cos(basis)*(1./np.sqrt(float(N))
+                              if k == 0 else np.sqrt(2./float(N)))
+    return basis
+
+
+def DCTNullSpace(k, N):
+    return torch.stack([DCTBasis(ind, N) for ind in range(k, N)])
+
+
+def DCTSpace(k, N):
+    return torch.stack([DCTBasis(ind, N) for ind in range(0, k)])
+
 # Hierarchical sampling (section 5.2)
+
+
 def sample_pdf(bins, weights, N_samples, det=False, pytest=False):
     # Get pdf
     weights = weights + 1e-5  # prevent nans
@@ -416,10 +525,10 @@ def sample_pdf(bins, weights, N_samples, det=False, pytest=False):
 
     # Take uniform samples
     if det:
-        u = torch.linspace(0., 1., steps=N_samples, device=cdf.device)
+        u = torch.linspace(0., 1., steps=N_samples)
         u = u.expand(list(cdf.shape[:-1]) + [N_samples])
     else:
-        u = torch.rand(list(cdf.shape[:-1]) + [N_samples], device=cdf.device)
+        u = torch.rand(list(cdf.shape[:-1]) + [N_samples])
 
     # Pytest, overwrite u with numpy's fixed random numbers
     if pytest:
@@ -434,7 +543,6 @@ def sample_pdf(bins, weights, N_samples, det=False, pytest=False):
 
     # Invert CDF
     u = u.contiguous()
-    #inds = searchsorted(cdf, u, side='right')
     inds = torch.searchsorted(cdf, u, right=True)
     below = torch.max(torch.zeros_like(inds-1), inds-1)
     above = torch.min((cdf.shape[-1]-1) * torch.ones_like(inds), inds)
