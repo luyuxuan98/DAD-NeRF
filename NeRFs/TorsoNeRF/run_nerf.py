@@ -15,7 +15,7 @@ import cv2
 import wave
 from run_nerf_helpers import *
 import subprocess
-
+import ffmpeg
 
 device = torch.device('cuda', 0)
 device_torso = torch.device('cuda', 0)
@@ -857,6 +857,27 @@ def train():
             adjust_poses = poses.clone()
             adjust_poses_torso = poses.clone()
 
+            
+            
+
+
+
+
+
+
+
+            
+
+            
+
+
+
+
+
+
+
+
+
             et = pose_to_euler_trans(adjust_poses_torso)
             embed_et = torch.cat(
                 (embed_fn(et[:, :3]), embed_fn(et[:, 3:])), dim=-1).to(device_torso)
@@ -865,15 +886,6 @@ def train():
             t_start = time.time()
             vid_out = cv2.VideoWriter(os.path.join(testsavedir, 'result.avi'),
                                         cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 25, (W, H))
-            
-
-
-
-
-            
-
-
-
 
 
 
@@ -888,18 +900,30 @@ def train():
                 rgbs_com = rgbs*last_weights_torso[..., None] + rgb_fgs_torso
                 rgb8 = to8b(rgbs_com[0])
                 vid_out.write(rgb8[:, :, ::-1])
+                os.makedirs(testsavedir + '/render_imgs', exist_ok=True)
                 filename = os.path.join(
-                    testsavedir, str(aud_ids[j]) + '.jpg')
+                    testsavedir, 'render_imgs', str(aud_ids[j]) + '.jpg')
                 imageio.imwrite(filename, rgb8)
                 print('finished render', j)
             print('finished render in', time.time()-t_start)
             vid_out.release()
 
-            # cmd = 'ffmpeg -i ' + args.datadir + '/aud_cutted.wav' + '-i' + os.path.join(testsavedir, 'result.avi')
-            cmd = 'ffmpeg ' + '-i ' + os.path.join(testsavedir, 'result.avi') + ' -i ' +  args.datadir + '/aud_cutted.wav ' + '-c:v copy -c:a aac -strict experimental ' + os.path.join(testsavedir, '0000result_with_aud.avi')
-            print('cmd:', cmd)
-            subprocess.call(cmd)
+
+            # 将无声视频和音频合并
+            video = ffmpeg.input(os.path.join(testsavedir, 'result.avi'))
+            audio = ffmpeg.input(os.path.join(args.datadir, 'aud_cutted.wav'))
+
+            video_with_audio = ffmpeg.output(video, audio, os.path.join(testsavedir, 'result_with_aud.avi'))
+            video_with_audio.run()
             print('vide with aud done!!!')
+
+
+
+            # cmd = 'ffmpeg -i ' + args.datadir + '/aud_cutted.wav' + '-i' + os.path.join(testsavedir, 'result.avi')
+            # cmd = 'ffmpeg ' + '-i ' + os.path.join(testsavedir, 'result.avi') + ' -i ' +  args.datadir + '/aud_cutted.wav ' + '-c:v copy -c:a aac -strict experimental ' + os.path.join(testsavedir, '0000result_with_aud.avi')
+            # print('cmd:', cmd)
+            # subprocess.call(cmd)
+            # print('vide with aud done!!!')
             return
 
     N_rand = args.N_rand
