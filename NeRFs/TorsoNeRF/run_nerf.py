@@ -857,27 +857,6 @@ def train():
             adjust_poses = poses.clone()
             adjust_poses_torso = poses.clone()
 
-            
-            
-
-
-
-
-
-
-
-            
-
-            
-
-
-
-
-
-
-
-
-
             et = pose_to_euler_trans(adjust_poses_torso)
             embed_et = torch.cat(
                 (embed_fn(et[:, :3]), embed_fn(et[:, 3:])), dim=-1).to(device_torso)
@@ -886,10 +865,6 @@ def train():
             t_start = time.time()
             vid_out = cv2.VideoWriter(os.path.join(testsavedir, 'result.avi'),
                                         cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 25, (W, H))
-
-
-
-
             for j in range(poses.shape[0]):
                 rgbs, disps, last_weights, rgb_fgs = \
                     render_path(adjust_poses[j:j+1], auds_val[j:j+1],
@@ -907,23 +882,12 @@ def train():
                 print('finished render', j)
             print('finished render in', time.time()-t_start)
             vid_out.release()
-
-
             # 将无声视频和音频合并
             video = ffmpeg.input(os.path.join(testsavedir, 'result.avi'))
             audio = ffmpeg.input(os.path.join(args.datadir, 'aud_cutted.wav'))
-
             video_with_audio = ffmpeg.output(video, audio, os.path.join(testsavedir, 'result_with_aud.avi'))
             video_with_audio.run()
             print('vide with aud done!!!')
-
-
-
-            # cmd = 'ffmpeg -i ' + args.datadir + '/aud_cutted.wav' + '-i' + os.path.join(testsavedir, 'result.avi')
-            # cmd = 'ffmpeg ' + '-i ' + os.path.join(testsavedir, 'result.avi') + ' -i ' +  args.datadir + '/aud_cutted.wav ' + '-c:v copy -c:a aac -strict experimental ' + os.path.join(testsavedir, '0000result_with_aud.avi')
-            # print('cmd:', cmd)
-            # subprocess.call(cmd)
-            # print('vide with aud done!!!')
             return
 
     N_rand = args.N_rand
@@ -932,14 +896,14 @@ def train():
         # For random ray batching
         print('get rays')
         rays = np.stack([get_rays_np(H, W, focal, p, cx, cy)
-                         for p in poses[:, :3, :4]], 0)  # [N, ro+rd, H, W, 3]
+                            for p in poses[:, :3, :4]], 0)  # [N, ro+rd, H, W, 3]
         print('done, concats')
         # [N, ro+rd+rgb, H, W, 3]
         rays_rgb = np.concatenate([rays, com_images[:, None]], 1)
         # [N, H, W, ro+rd+rgb, 3]
         rays_rgb = np.transpose(rays_rgb, [0, 2, 3, 1, 4])
         rays_rgb = np.stack([rays_rgb[i]
-                             for i in i_train], 0)  # train images only
+                                for i in i_train], 0)  # train images only
         # [(N-1)*H*W, ro+rd+rgb, 3]
         rays_rgb = np.reshape(rays_rgb, [-1, 3, 3])
         rays_rgb = rays_rgb.astype(np.float32)
