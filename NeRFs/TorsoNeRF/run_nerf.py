@@ -770,10 +770,10 @@ def train():
             file.write(open(args.config, 'r').read())
 
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer, \
+    render_kwargs_train, render_kwargs_test, head_start, grad_vars, optimizer, \
         learned_codes, AudNet_state, optimizer_aud_state, AudAttNet_state = create_nerf(
             args, 'head.tar', args.dim_aud, device, True)
-    global_step = start
+    global_step = head_start
 
     AudNet = AudioNet(args.dim_aud, args.win_size).to(device)
     AudAttNet = AudioAttNet().to(device)
@@ -827,7 +827,7 @@ def train():
     if args.with_test:
         print('RENDER ONLY')
         with torch.no_grad():
-            testsavedir = os.path.join(basedir, expname, args.test_save_folder)
+            testsavedir = os.path.join(basedir, expname, args.test_save_folder + '_' +str(head_start))
             os.makedirs(testsavedir, exist_ok=True)
             print('test poses shape', poses.shape)
             smo_half_win = int(args.smo_size / 2)
@@ -849,11 +849,14 @@ def train():
                 if pad_right > 0:
                     auds_win = torch.cat(
                         (auds_win, torch.zeros_like(auds_win)[:pad_right]), dim=0)
+                # print('auds_win.shape:', auds_win.shape)
                 auds_win = AudNet(auds_win)
+                # print('auds_win.shape:', auds_win.shape)
                 aud_smo = AudAttNet(auds_win)
+                # print('aud_smo.shape:', aud_smo.shape)
                 auds_val.append(aud_smo)
             auds_val = torch.stack(auds_val, 0)
-
+            # print('auds_val.shape:', auds_val.shape)
             adjust_poses = poses.clone()
             adjust_poses_torso = poses.clone()
 
@@ -885,7 +888,7 @@ def train():
             # 将无声视频和音频合并
             video = ffmpeg.input(os.path.join(testsavedir, 'result.avi'))
             audio = ffmpeg.input(os.path.join(args.datadir, 'aud_cutted.wav'))
-            video_with_audio = ffmpeg.output(video, audio, os.path.join(testsavedir, 'result_with_aud.avi'))
+            video_with_audio = ffmpeg.output(video, audio, os.path.join(testsavedir, 'result_with_aud' '_' + str(head_start) + '.avi'))
             video_with_audio.run()
             print('vide with aud done!!!')
             return

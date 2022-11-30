@@ -6,8 +6,9 @@ import json
 import torch.nn.functional as F
 import cv2
 
+from utils import get_bbox3d_for_blenderobj
 
-def load_audface_data(basedir, testskip=1, test_file=None, aud_file=None):
+def load_audface_data(basedir, arg, testskip=1, test_file=None, aud_file=None):
     if test_file is not None:
         with open(os.path.join(basedir, test_file)) as fp:
             meta = json.load(fp)
@@ -78,4 +79,8 @@ def load_audface_data(basedir, testskip=1, test_file=None, aud_file=None):
     focal, cx, cy = float(meta['focal_len']), float(
         meta['cx']), float(meta['cy'])
 
-    return imgs, poses, auds, bc_img, [H, W, focal, cx, cy], sample_rects, sample_rects, i_split
+    # print('metas:', metas)
+    bounding_box = get_bbox3d_for_blenderobj(metas["train"], H, W, near=arg.near, far=arg.far)
+    # print('bounding_box:', bounding_box)
+
+    return imgs, poses, auds, bc_img, [H, W, focal, cx, cy], sample_rects, sample_rects, i_split, bounding_box

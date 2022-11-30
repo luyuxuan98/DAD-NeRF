@@ -237,7 +237,7 @@ def render_path(render_poses, aud_paras, bc_img, hwfcxy,
 def create_nerf(args):
     """Instantiate NeRF's MLP model.
     """
-    embed_fn, input_ch = get_embedder(args.multires, args.i_embed)
+    embed_fn, input_ch = get_embedder(args.multires, args, args.i_embed)
 
     input_ch_views = 0
     embeddirs_fn = None
@@ -671,6 +671,15 @@ def config_parser():
     parser.add_argument("--i_video",   type=int, default=50000,
                         help='frequency of render_poses video saving')
 
+    # 从hashnerf里移植过来的部分
+    parser.add_argument("--finest_res",   type=int, default=512,
+                        help='finest resolultion for hashed embedding')
+    parser.add_argument("--log2_hashmap_size",   type=int, default=19,
+                        help='log2 of hashmap size')
+    parser.add_argument("--sparse-loss-weight", type=float, default=1e-10,
+                        help='learning rate')
+    parser.add_argument("--tv-loss-weight", type=float, default=1e-6,
+                        help='learning rate')
     return parser
 
 
@@ -688,8 +697,9 @@ def train():
                                     args.test_file, args.aud_file)
             images = np.zeros(1)
         else:
-            images, poses, auds, bc_img, hwfcxy, sample_rects, mouth_rects, i_split = load_audface_data(
-                args.datadir, args.testskip)
+            images, poses, auds, bc_img, hwfcxy, sample_rects, mouth_rects, i_split, bounding_box = load_audface_data(
+                args.datadir, args, args.testskip)
+            args.bounding_box = bounding_box
         print('Loaded audface', images.shape, hwfcxy, args.datadir)
         print('auds.shape:', auds.shape)
         if args.with_test == 0:
@@ -710,9 +720,16 @@ def train():
     # if args.render_test:
     #     render_poses = np.array(poses[i_test])
 
+    if args.i_embed==1:
+        args.expname += "_hashXYZ"
+    elif args.i_embed==0:
+        args.expname += "_posXYZ"
+
     # Create log dir and copy the config file
     basedir = args.basedir
     expname = args.expname
+    
+
     os.makedirs(os.path.join(basedir, expname), exist_ok=True)
     f = os.path.join(basedir, expname, 'args.txt')
     with open(f, 'w') as file:
@@ -993,12 +1010,15 @@ def train():
         new_lrate = args.lrate * (decay_rate ** (global_step / decay_steps))
         for param_group in optimizer.param_groups:
             param_group['lr'] = new_lrate
+            # print('optimizer.param_group[\'lr\']:', param_group['lr'])
 
         for param_group in optimizer_Aud.param_groups:
             param_group['lr'] = new_lrate
+            # print('optimizer_Aud.param_group[\'lr\']:', param_group['lr'])
 
         for param_group in optimizer_AudAtt.param_groups:
             param_group['lr'] = new_lrate*5
+            # print('optimizer_AudAtt.param_group[\'lr\']:', param_group['lr'])
         ################################
 
         dt = time.time()-time0
@@ -1031,7 +1051,7 @@ def train():
 
         if i % args.i_print == 0:
             tqdm.write(
-                f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()}")
+                f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()}  Lr:{new_lrate}")
         global_step += 1
 
 
@@ -1039,3 +1059,4 @@ if __name__ == '__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
     train()
+      

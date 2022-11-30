@@ -86,12 +86,28 @@ def load_audface_data(basedir, testskip=1, test_file=None, aud_file=None, test_s
 
 def load_test_data(basedir, aud_file, test_pose_file='transforms_train.json',
                    testskip=1, test_size=-1, aud_start=0):
+    # print('basedir:', basedir)
+    # print('aud_file:', aud_file)
+    nerfmodel_person = basedir.split('/')[-1]
+    driving_audio_person = aud_file.split('/')[-2]
+    print('nerfmodel_person:', nerfmodel_person)
+    print('driving_audio_person:', driving_audio_person)
+    # 判断是否是自驱动，如果是，后面图像和声音选取一样的部分，如果不是，声音任意选
+    if nerfmodel_person == driving_audio_person:
+        self_driving = True
+    else:
+        self_driving = False
+    print('self_driving:', self_driving)
     with open(os.path.join(basedir, test_pose_file)) as fp:
         meta = json.load(fp)
     # print('meta:', meta)
-    # 把声音调成和frame同一帧
-    aud_start = int(meta['frames'][0]['aud_id'])
-    # print('aud_start:', aud_start)
+    # 如果是自驱动，把声音调成和frame同一帧
+    if self_driving:
+        aud_start = int(meta['frames'][0]['aud_id'])
+    else:
+        pass
+        # aud_start=0
+    print('aud_start:', aud_start)
     poses = []
     auds = []
     aud_features = np.load(aud_file)

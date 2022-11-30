@@ -4,6 +4,9 @@ import torch.nn as nn
 import torch
 torch.autograd.set_detect_anomaly(True)
 
+from hash_encoding import HashEmbedder
+
+
 # TODO: remove this dependency
 
 
@@ -51,7 +54,7 @@ class Embedder:
     def embed(self, inputs):
         return torch.cat([fn(inputs) for fn in self.embed_fns], -1)
 
-
+'''
 def get_embedder(multires, i=0):
     if i == -1:
         return nn.Identity(), 3
@@ -68,6 +71,32 @@ def get_embedder(multires, i=0):
     embedder_obj = Embedder(**embed_kwargs)
     def embed(x, eo=embedder_obj): return eo.embed(x)
     return embed, embedder_obj.out_dim
+'''
+
+
+def get_embedder(multires, args, i=0):
+    if i == -1:
+        return nn.Identity(), 3
+    elif i==0:
+        embed_kwargs = {
+                    'include_input' : True,
+                    'input_dims' : 3,
+                    'max_freq_log2' : multires-1,
+                    'num_freqs' : multires,
+                    'log_sampling' : True,
+                    'periodic_fns' : [torch.sin, torch.cos],
+        }
+        
+        embedder_obj = Embedder(**embed_kwargs)
+        embed = lambda x, eo=embedder_obj : eo.embed(x)
+        out_dim = embedder_obj.out_dim
+    elif i==1:
+        embed = HashEmbedder(bounding_box=args.bounding_box, \
+                            log2_hashmap_size=args.log2_hashmap_size, \
+                            finest_resolution=args.finest_res)
+        out_dim = embed.out_dim
+    return embed, out_dim
+
 
 
 # Audio feature extractor
@@ -451,7 +480,7 @@ def get_rays_np(H, W, focal, c2w, cx=None, cy=None):
     if cy is None:
         cy = H*.5
     i, j = np.meshgrid(np.arange(W, dtype=np.float32),
-                       np.arange(H, dtype=np.float32), indexing='xy')
+                        np.arange(H, dtype=np.float32), indexing='xy')
     dirs = np.stack([(i-cx)/focal, -(j-cy)/focal, -np.ones_like(i)], -1)
     # Rotate ray directions from camera frame to the world frame
     # dot product, equals to: [c2w.dot(dir) for dir in dirs]
