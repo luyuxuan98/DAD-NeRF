@@ -7,8 +7,6 @@ torch.autograd.set_detect_anomaly(True)
 from hash_encoding import HashEmbedder
 
 
-# TODO: remove this dependency
-
 
 # Misc
 def img2mse(x, y): return torch.mean((x - y) ** 2)
@@ -93,7 +91,8 @@ def get_embedder(multires, args, i=0):
     elif i==1:
         embed = HashEmbedder(bounding_box=args.bounding_box, \
                             log2_hashmap_size=args.log2_hashmap_size, \
-                            finest_resolution=args.finest_res)
+                            finest_resolution=args.finest_res, \
+                            n_levels=args.n_levels)
         out_dim = embed.out_dim
     return embed, out_dim
 

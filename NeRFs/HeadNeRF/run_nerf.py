@@ -33,8 +33,11 @@ def batchify(fn, chunk):
 def run_network(inputs, viewdirs, aud_para, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
     """Prepares inputs and applies network 'fn'.
     """
+    # print('inputs.shape:', inputs.shape)
     inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
+    # print('inputs_flat.shape:', inputs_flat.shape)
     embedded = embed_fn(inputs_flat)
+    # print('embedded.shape:', embedded.shape)
     # print('aud_para.shape:', aud_para.shape)
     aud = aud_para.unsqueeze(0).expand(inputs_flat.shape[0], -1)
     # print('aud.shape:', aud.shape)
@@ -256,8 +259,18 @@ def create_nerf(args):
                 input_ch_views=input_ch_views,
                 use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
     print('model:', model)
+    # print('model._occ:', model._occ)
     # print('output_ch:', output_ch)
     grad_vars = list(model.parameters())
+
+    # 把embdding层加入优化器中算梯度
+    if args.i_embed==1:
+        grad_vars = list(embed_fn.parameters())
+
+
+
+
+
 
     model_fine = None
 
@@ -674,8 +687,10 @@ def config_parser():
     # 从hashnerf里移植过来的部分
     parser.add_argument("--finest_res",   type=int, default=512,
                         help='finest resolultion for hashed embedding')
-    parser.add_argument("--log2_hashmap_size",   type=int, default=19,
+    parser.add_argument("--log2_hashmap_size",   type=int, default=14,
                         help='log2 of hashmap size')
+    parser.add_argument("--n_levels",   type=int, default=16,
+                        help='Number of levels')                    
     parser.add_argument("--sparse-loss-weight", type=float, default=1e-10,
                         help='learning rate')
     parser.add_argument("--tv-loss-weight", type=float, default=1e-6,
@@ -728,7 +743,7 @@ def train():
     # Create log dir and copy the config file
     basedir = args.basedir
     expname = args.expname
-    
+
 
     os.makedirs(os.path.join(basedir, expname), exist_ok=True)
     f = os.path.join(basedir, expname, 'args.txt')
@@ -785,7 +800,7 @@ def train():
             print('test poses shape', poses.shape)
             auds_val = AudNet(auds)
             rgbs, disp, last_weight = render_path(poses, auds_val, bc_img, hwfcxy, args.chunk, render_kwargs_test,
-                                                  gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
+                                                    gt_imgs=images, savedir=testsavedir, render_factor=args.render_factor)
             np.save(os.path.join(testsavedir, 'last_weight.npy'), last_weight)
             print('Done rendering', testsavedir)
             imageio.mimwrite(os.path.join(
@@ -798,14 +813,14 @@ def train():
     # Prepare raybatch tensor if batching random rays
     N_rand = args.N_rand
     print('N_rand', N_rand, 'no_batching',
-          args.no_batching, 'sample_rate', args.sample_rate)
+            args.no_batching, 'sample_rate', args.sample_rate)
     use_batching = not args.no_batching
 
     if use_batching:
         # For random ray batching
         print('get rays')
         rays = np.stack([get_rays_np(H, W, focal, p, cx, cy)
-                         for p in poses[:, :3, :4]], 0)  # [N, ro+rd, H, W, 3]
+                            for p in poses[:, :3, :4]], 0)  # [N, ro+rd, H, W, 3]
         print('done, concats')
         # [N, ro+rd+rgb, H, W, 3]
         rays_rgb = np.concatenate([rays, images[:, None]], 1)
@@ -998,6 +1013,12 @@ def train():
             loss = loss + img_loss0
             psnr0 = mse2psnr(img_loss0)
 
+
+
+
+        # TODO: 可以加入Total Variation loss
+
+
         loss.backward()
         optimizer.step()
         optimizer_Aud.step()
@@ -1059,4 +1080,3 @@ if __name__ == '__main__':
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
     train()
-      

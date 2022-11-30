@@ -79,8 +79,10 @@ def load_audface_data(basedir, arg, testskip=1, test_file=None, aud_file=None):
     focal, cx, cy = float(meta['focal_len']), float(
         meta['cx']), float(meta['cy'])
 
+    bounding_box=None
     # print('metas:', metas)
-    bounding_box = get_bbox3d_for_blenderobj(metas["train"], H, W, near=arg.near, far=arg.far)
+    if arg.i_embed == 1:
+        bounding_box = get_bbox3d_for_blenderobj(metas["train"], H, W, near=arg.near, far=arg.far)
     # print('bounding_box:', bounding_box)
 
     return imgs, poses, auds, bc_img, [H, W, focal, cx, cy], sample_rects, sample_rects, i_split, bounding_box
