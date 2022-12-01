@@ -246,7 +246,7 @@ def create_nerf(args):
     embeddirs_fn = None
     if args.use_viewdirs:
         embeddirs_fn, input_ch_views = get_embedder(
-            args.multires_views, args.i_embed)
+            args.multires_views, args, args.i_embed_view)
     output_ch = 5 if args.N_importance > 0 else 4
     skips = [4]
     # model = FaceNeRF(D=args.netdepth, W=args.netwidth,
@@ -601,7 +601,9 @@ def config_parser():
     parser.add_argument("--use_viewdirs", action='store_false',
                         help='use full 5D input instead of 3D')
     parser.add_argument("--i_embed", type=int, default=0,
-                        help='set 0 for default positional encoding, -1 for none')
+                        help='set 0 for default positional encoding, 1 for hash encoding, -1 for none')
+    parser.add_argument("--i_embed_view", type=int, default=0,
+                        help='set 0 for default positional encoding, 1 for hash encoding, -1 for none')
     parser.add_argument("--multires", type=int, default=10,
                         help='log2 of max freq for positional encoding (3D location)')
     parser.add_argument("--multires_views", type=int, default=4,

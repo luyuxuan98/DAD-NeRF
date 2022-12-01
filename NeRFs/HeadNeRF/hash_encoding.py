@@ -64,7 +64,7 @@ class HashEmbedder(nn.Module):
         x_embedded_all = []
         for i in range(self.n_levels):
             resolution = torch.floor(self.base_resolution * self.b**i)
-            # print('resolution:', resolution)
+            print('resolution:', resolution)
             voxel_min_vertex, voxel_max_vertex, hashed_voxel_indices = get_voxel_vertices(\
                                                 x, self.bounding_box, \
                                                 resolution, self.log2_hashmap_size)
