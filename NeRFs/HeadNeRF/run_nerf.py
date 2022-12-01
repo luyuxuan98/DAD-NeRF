@@ -264,8 +264,8 @@ def create_nerf(args):
     grad_vars = list(model.parameters())
 
     # 把embdding层加入优化器中算梯度
-    if args.i_embed==1:
-        grad_vars = list(embed_fn.parameters())
+    if args.i_embed == 1:
+        grad_vars += list(embed_fn.parameters())
 
 
 
