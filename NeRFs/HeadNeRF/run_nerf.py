@@ -340,7 +340,7 @@ def create_nerf(args):
         'network_fn': model,
         'use_viewdirs': args.use_viewdirs,
         'white_bkgd': args.white_bkgd,
-        'raw_noise_std': args.raw_noise_std,
+        'raw_noise_std': args.raw_noise_std
     }
 
     # NDC only good for LLFF-style forward facing data
@@ -685,6 +685,8 @@ def config_parser():
                         help='frequency of testset saving')
     parser.add_argument("--i_video",   type=int, default=50000,
                         help='frequency of render_poses video saving')
+    parser.add_argument("--use_wandb",   type=bool, default=False,
+                        help='using wandb to log')
 
     # 从hashnerf里移植过来的部分
     parser.add_argument("--finest_res",   type=int, default=512,
@@ -704,6 +706,11 @@ def train():
 
     parser = config_parser()
     args = parser.parse_args()
+
+    if args.i_embed==1:
+        args.expname += "_hashXYZ"
+    elif args.i_embed==0:
+        args.expname += "_posXYZ"
 
     # Load data
 
@@ -728,6 +735,13 @@ def train():
         print('Unknown dataset type', args.dataset_type, 'exiting')
         return
 
+
+    if args.use_wandb:
+        import wandb
+        wandb_run = wandb.init(project='DAD-NeRF_Talking_Head', name=args.expname + '', notes='', config=args)
+        # wandb_run._label(repo='CycleGAN-and-pix2pix')
+
+
     # Cast intrinsics to right types
     H, W, focal, cx, cy = hwfcxy
     H, W = int(H), int(W)
@@ -737,10 +751,7 @@ def train():
     # if args.render_test:
     #     render_poses = np.array(poses[i_test])
 
-    if args.i_embed==1:
-        args.expname += "_hashXYZ"
-    elif args.i_embed==0:
-        args.expname += "_posXYZ"
+    
 
     # Create log dir and copy the config file
     basedir = args.basedir
@@ -770,6 +781,14 @@ def train():
         params=list(AudNet.parameters()), lr=args.lrate, betas=(0.9, 0.999))
     optimizer_AudAtt = torch.optim.Adam(
         params=list(AudAttNet.parameters()), lr=args.lrate, betas=(0.9, 0.999))
+
+    # 试图记录下模型，但应该没什么用
+    if args.use_wandb:
+        wandb_run.watch(render_kwargs_train['network_fine'])
+        wandb_run.watch(render_kwargs_train['network_fn'])
+        wandb_run.watch(AudNet)
+        wandb_run.watch(AudAttNet)
+        # wandb_run.watch(render_kwargs_train['embed_fn'])
 
     if AudNet_state is not None:
         AudNet.load_state_dict(AudNet_state, strict=False)
@@ -1047,6 +1066,26 @@ def train():
         dt = time.time()-time0
 
         # Rest is logging
+
+        if args.use_wandb:
+                result_dict = {
+                    'target': target,
+                    'pose': pose,
+                    'rect': rect,
+                    'aud': aud,
+                    'global_step': global_step,
+                    'rays_o': rays_o,
+                    'rays_d': rays_d,
+                    'rgb': rgb,
+                    'raw': extras['raw'],
+                    'loss': loss,
+                    'psnr': psnr,
+                    'lrate': new_lrate
+                }
+                wandb_run.log(result_dict)
+
+
+
         if i % args.i_weights == 0:
             path = os.path.join(basedir, expname, '{:06d}_head.tar'.format(i))
             torch.save({
