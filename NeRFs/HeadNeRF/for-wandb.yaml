@@ -1,0 +1,79 @@
+program: NeRFs/HeadNeRF/run_nerf.py
+method: bayes
+metric:
+  goal: maximize
+  name: psnr
+parameters:
+  log2_hashmap_size:
+    max: 24
+    min: 14
+    distribution: int_uniform
+  netwidth_fine:
+    value: 64
+    distribution: constant
+  netdepth_fine:
+    value: 3
+    distribution: constant
+  nosmo_iters:
+    max: 400000
+    min: 10000
+    distribution: int_uniform
+  lrate_decay:
+    max: 2500
+    min: 25
+    distribution: int_uniform
+  finest_res:
+    max: 19
+    min: 9
+    distribution: q_log_uniform
+    q: 2
+  use_wandb:
+    value: true
+    distribution: constant
+  nerf_type:
+    value: d-nerf
+    distribution: constant
+  i_weights:
+    value: 1000000
+    distribution: constant
+  i_testset:
+    value: 1000000
+    distribution: constant
+  netwidth:
+    value: 64
+    distribution: constant
+  netdepth:
+    value: 3
+    distribution: constant
+  n_levels:
+    max: 16
+    min: 8
+    distribution: int_uniform
+  i_video:
+    value: 1000000
+    distribution: constant
+  i_print:
+    value: 100
+    distribution: constant
+  i_embed:
+    value: 1
+    distribution: constant
+  expname:
+    value: fajixian_head
+    distribution: constant
+  N_iters:
+    value: 10000
+    distribution: constant
+  N_rand:
+    value: 512
+    distribution: constant
+  lrate:
+    max: 0.001
+    min: 0.0001
+    distribution: uniform
+  near:
+    value: 0.5855221629142762
+    distribution: constant
+  far:
+    value: 1.185522162914276
+    distribution: constant

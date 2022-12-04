@@ -92,7 +92,7 @@ def get_embedder(multires, args, i=0):
         embed = HashEmbedder(bounding_box=args.bounding_box, \
                             log2_hashmap_size=args.log2_hashmap_size, \
                             finest_resolution=args.finest_res, \
-                            n_levels=args.n_levels)
+                            n_levels=args.n_levels).to('cuda')
         out_dim = embed.out_dim
     return embed, out_dim
 

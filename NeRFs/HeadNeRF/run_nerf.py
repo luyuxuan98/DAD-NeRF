@@ -241,7 +241,8 @@ def create_nerf(args):
     """Instantiate NeRF's MLP model.
     """
     embed_fn, input_ch = get_embedder(args.multires, args, args.i_embed)
-
+    print('embed_fn:', embed_fn)
+    print('next(embed_fn.parameters()).device:', next(embed_fn.parameters()).device)
     input_ch_views = 0
     embeddirs_fn = None
     if args.use_viewdirs:
@@ -259,6 +260,7 @@ def create_nerf(args):
                 input_ch_views=input_ch_views,
                 use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
     print('model:', model)
+    print('next(model.parameters()).device:', next(model.parameters()).device)
     # print('model._occ:', model._occ)
     # print('output_ch:', output_ch)
     grad_vars = list(model.parameters())
@@ -266,11 +268,6 @@ def create_nerf(args):
     # 把embdding层加入优化器中算梯度
     if args.i_embed == 1:
         grad_vars += list(embed_fn.parameters())
-
-
-
-
-
 
     model_fine = None
 
@@ -582,7 +579,7 @@ def config_parser():
                         help='number of pts sent through network in parallel, decrease if running out of memory')
     parser.add_argument("--no_batching", action='store_false',
                         help='only take random rays from 1 image at a time')
-    parser.add_argument("--no_reload", action='store_true',
+    parser.add_argument("--no_reload", action='store_false',
                         help='do not reload weights from saved ckpt')
     parser.add_argument("--ft_path", type=str, default=None,
                         help='specific weights npy file to reload for coarse network')
@@ -707,6 +704,10 @@ def train():
     parser = config_parser()
     args = parser.parse_args()
 
+    args.datadir = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian'
+    args.basedir = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian/logs'
+    args.aud_file = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian/aud.npy'
+    
     if args.i_embed==1:
         args.expname += "_hashXYZ"
     elif args.i_embed==0:
