@@ -579,7 +579,7 @@ def config_parser():
                         help='number of pts sent through network in parallel, decrease if running out of memory')
     parser.add_argument("--no_batching", action='store_false',
                         help='only take random rays from 1 image at a time')
-    parser.add_argument("--no_reload", action='store_false',
+    parser.add_argument("--no_reload", action='store_true',
                         help='do not reload weights from saved ckpt')
     parser.add_argument("--ft_path", type=str, default=None,
                         help='specific weights npy file to reload for coarse network')
@@ -682,7 +682,7 @@ def config_parser():
                         help='frequency of testset saving')
     parser.add_argument("--i_video",   type=int, default=50000,
                         help='frequency of render_poses video saving')
-    parser.add_argument("--use_wandb",   type=bool, default=False,
+    parser.add_argument("--use_wandb", action='store_true',
                         help='using wandb to log')
 
     # 从hashnerf里移植过来的部分
@@ -704,9 +704,9 @@ def train():
     parser = config_parser()
     args = parser.parse_args()
 
-    args.datadir = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian'
-    args.basedir = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian/logs'
-    args.aud_file = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian/aud.npy'
+    # args.datadir = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian'
+    # args.basedir = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian/logs'
+    # args.aud_file = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian/aud.npy'
     
     if args.i_embed==1:
         args.expname += "_hashXYZ"
@@ -736,7 +736,7 @@ def train():
         print('Unknown dataset type', args.dataset_type, 'exiting')
         return
 
-
+    print('args.use_wandb:', args.use_wandb)
     if args.use_wandb:
         import wandb
         wandb_run = wandb.init(project='DAD-NeRF_Talking_Head', name=args.expname + '', notes='', config=args)
@@ -782,7 +782,7 @@ def train():
         params=list(AudNet.parameters()), lr=args.lrate, betas=(0.9, 0.999))
     optimizer_AudAtt = torch.optim.Adam(
         params=list(AudAttNet.parameters()), lr=args.lrate, betas=(0.9, 0.999))
-
+    '''
     # 试图记录下模型，但应该没什么用
     if args.use_wandb:
         wandb_run.watch(render_kwargs_train['network_fine'])
@@ -790,7 +790,7 @@ def train():
         wandb_run.watch(AudNet)
         wandb_run.watch(AudAttNet)
         # wandb_run.watch(render_kwargs_train['embed_fn'])
-
+    '''
     if AudNet_state is not None:
         AudNet.load_state_dict(AudNet_state, strict=False)
     if optimizer_aud_state is not None:

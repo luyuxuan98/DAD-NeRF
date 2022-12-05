@@ -1,0 +1,30 @@
+program: NeRFs/HeadNeRF/run_nerf.py
+method: bayes
+metric:
+  goal: maximize
+  name: psnr
+parameters:
+  config:
+    value: dataset/fajixian/HeadNeRF_config.txt
+    distribution: constant
+  log2_hashmap_size:
+    max: 21
+    min: 14
+    distribution: int_uniform
+  lrate_decay:
+    max: 1000
+    min: 100
+    distribution: int_uniform
+  finest_res:
+    max: 19
+    min: 9
+    distribution: q_log_uniform
+    q: 2
+  n_levels:
+    max: 16
+    min: 8
+    distribution: int_uniform
+  lrate:
+    max: 0.001
+    min: 0.00005
+    distribution: uniform

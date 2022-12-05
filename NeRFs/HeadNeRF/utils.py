@@ -107,7 +107,7 @@ def get_voxel_vertices(xyz, bounding_box, resolution, log2_hashmap_size):
 
     if not torch.all(xyz <= box_max) or not torch.all(xyz >= box_min):
         print("ALERT: some points are outside bounding box. Clipping them!")
-        pdb.set_trace()
+        # pdb.set_trace()
         xyz = torch.clamp(xyz, min=box_min, max=box_max)
 
     grid_size = (box_max-box_min)/resolution
