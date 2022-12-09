@@ -12,10 +12,10 @@ import torch.nn.functional as F
 from tqdm import tqdm, trange
 from natsort import natsorted
 from run_nerf_helpers import *
-
+from piqa import PSNR, SSIM, LPIPS
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-np.random.seed(0)
+# np.random.seed(0)
 DEBUG = False
 
 
@@ -241,8 +241,8 @@ def create_nerf(args):
     """Instantiate NeRF's MLP model.
     """
     embed_fn, input_ch = get_embedder(args.multires, args, args.i_embed)
-    print('embed_fn:', embed_fn)
-    print('next(embed_fn.parameters()).device:', next(embed_fn.parameters()).device)
+    # print('embed_fn:', embed_fn)
+    # print('next(embed_fn.parameters()).device:', next(embed_fn.parameters()).device)
     input_ch_views = 0
     embeddirs_fn = None
     if args.use_viewdirs:
@@ -339,6 +339,8 @@ def create_nerf(args):
         'white_bkgd': args.white_bkgd,
         'raw_noise_std': args.raw_noise_std
     }
+    if args.i_embed == 1:
+        render_kwargs_train['embed_fn'] = embed_fn
 
     # NDC only good for LLFF-style forward facing data
     if args.dataset_type != 'llff' or args.no_ndc:
@@ -708,10 +710,11 @@ def train():
     # args.basedir = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian/logs'
     # args.aud_file = '/home/arc-lyx5761/workspace/DAD-NeRF/dataset/fajixian/aud.npy'
     
-    if args.i_embed==1:
-        args.expname += "_hashXYZ"
-    elif args.i_embed==0:
-        args.expname += "_posXYZ"
+    if args.nerf_type == 'd-nerf':
+        if args.i_embed==1:
+            args.expname += "_hashXYZ"
+        elif args.i_embed==0:
+            args.expname += "_posXYZ"
 
     # Load data
 
@@ -739,7 +742,7 @@ def train():
     print('args.use_wandb:', args.use_wandb)
     if args.use_wandb:
         import wandb
-        wandb_run = wandb.init(project='DAD-NeRF_Talking_Head', name=args.expname + '', notes='', config=args)
+        wandb_run = wandb.init(project='DAD-NeRF_Talking_Head', name=args.expname + '', notes='dnerf english with normal encoding, but larger network', tags=[str(args.expname), str(args.nerf_type), str(args.i_embed) + '(i_embed)'], config=args)
         # wandb_run._label(repo='CycleGAN-and-pix2pix')
 
 
@@ -1021,7 +1024,10 @@ def train():
                                                             aud_para=aud, bc_rgb=bc_rgb,
                                                             verbose=i < 10, retraw=True,
                                                             **render_kwargs_train)
-
+        # print('rgb.shape:', rgb.shape)
+        # print('rgb:', rgb)
+        # print('target_s.shape:', target_s.shape)
+        # print('target_s:', target_s)
         optimizer.zero_grad()
         optimizer_Aud.zero_grad()
         optimizer_AudAtt.zero_grad()
@@ -1035,8 +1041,11 @@ def train():
             loss = loss + img_loss0
             psnr0 = mse2psnr(img_loss0)
 
+        # ssim = SSIM().cuda()
+        # lpips = LPIPS().cuda()
 
-
+        # ssim_result = ssim(rgb, target_s)
+        # lpips_result = lpips(rgb, target_s)
 
         # TODO: 可以加入Total Variation loss
 
@@ -1081,6 +1090,8 @@ def train():
                     'raw': extras['raw'],
                     'loss': loss,
                     'psnr': psnr,
+                    # 'ssim': ssim_result,
+                    # 'lpips': lpips_result,
                     'lrate': new_lrate
                 }
                 wandb_run.log(result_dict)
@@ -1089,16 +1100,33 @@ def train():
 
         if i % args.i_weights == 0:
             path = os.path.join(basedir, expname, '{:06d}_head.tar'.format(i))
-            torch.save({
+            
+            # hash encoding 还要再保存embed_fn的内容
+            if args.i_embed == 1:
+                torch.save({
                 'global_step': global_step,
                 'network_fn_state_dict': render_kwargs_train['network_fn'].state_dict(),
                 'network_fine_state_dict': render_kwargs_train['network_fine'].state_dict(),
+                'embed_fn_state_dict': render_kwargs_train['embed_fn'].state_dict(),
                 'network_audnet_state_dict': AudNet.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'optimizer_aud_state_dict': optimizer_Aud.state_dict(),
                 'network_audattnet_state_dict': AudAttNet.state_dict(),
                 'optimizer_audatt_state_dict': optimizer_AudAtt.state_dict(),
-            }, path)
+                }, path)
+            else:
+                torch.save({
+                    'global_step': global_step,
+                    'network_fn_state_dict': render_kwargs_train['network_fn'].state_dict(),
+                    'network_fine_state_dict': render_kwargs_train['network_fine'].state_dict(),
+                    'network_audnet_state_dict': AudNet.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'optimizer_aud_state_dict': optimizer_Aud.state_dict(),
+                    'network_audattnet_state_dict': AudAttNet.state_dict(),
+                    'optimizer_audatt_state_dict': optimizer_AudAtt.state_dict(),
+                }, path)
+
+            
             print('Saved checkpoints at', path)
 
         if i % args.i_testset == 0 and i > 0:
@@ -1114,7 +1142,7 @@ def train():
 
         if i % args.i_print == 0:
             tqdm.write(
-                f"[TRAIN] Iter: {i} Loss: {loss.item()}  PSNR: {psnr.item()}  Lr:{new_lrate}")
+                f"[TRAIN] Iter: {i} Loss: {loss.item()} PSNR: {psnr.item()} Lr:{new_lrate}")
         global_step += 1
 
 

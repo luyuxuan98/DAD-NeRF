@@ -16,15 +16,14 @@ parameters:
     min: 100
     distribution: int_uniform
   finest_res:
-    max: 19
-    min: 9
-    distribution: q_log_uniform
-    q: 2
+    max: 16384
+    min: 512
+    distribution: int_uniform
   n_levels:
     max: 16
-    min: 8
+    min: 4
     distribution: int_uniform
   lrate:
-    max: 0.001
+    max: 0.0004
     min: 0.00005
     distribution: uniform
