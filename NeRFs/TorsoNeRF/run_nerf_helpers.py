@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch
 torch.autograd.set_detect_anomaly(True)
 
-# TODO: remove this dependency
+from hash_encoding import HashEmbedder
+
 
 
 # Misc
@@ -51,7 +52,7 @@ class Embedder:
     def embed(self, inputs):
         return torch.cat([fn(inputs) for fn in self.embed_fns], -1)
 
-
+'''
 def get_embedder(multires, i=0):
     if i == -1:
         return nn.Identity(), 3
@@ -68,6 +69,33 @@ def get_embedder(multires, i=0):
     embedder_obj = Embedder(**embed_kwargs)
     def embed(x, eo=embedder_obj): return eo.embed(x)
     return embed, embedder_obj.out_dim
+'''
+
+
+def get_embedder(multires, args, i=0):
+    if i == -1:
+        return nn.Identity(), 3
+    elif i==0:
+        embed_kwargs = {
+                    'include_input' : True,
+                    'input_dims' : 3,
+                    'max_freq_log2' : multires-1,
+                    'num_freqs' : multires,
+                    'log_sampling' : True,
+                    'periodic_fns' : [torch.sin, torch.cos],
+        }
+        
+        embedder_obj = Embedder(**embed_kwargs)
+        embed = lambda x, eo=embedder_obj : eo.embed(x)
+        out_dim = embedder_obj.out_dim
+    elif i==1:
+        embed = HashEmbedder(bounding_box=args.bounding_box, \
+                            log2_hashmap_size=args.log2_hashmap_size, \
+                            finest_resolution=args.finest_res, \
+                            n_levels=args.n_levels).to('cuda')
+        out_dim = embed.out_dim
+    return embed, out_dim
+
 
 
 # Audio feature extractor
@@ -270,11 +298,11 @@ class NeRFOriginal(nn.Module):
         self.pts_linears = nn.ModuleList(layers)
 
         ### Implementation according to the official code release (https://github.com/bmild/nerf/blob/master/run_nerf_helpers.py#L104-L105)
-        self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W//2)])
+        # self.views_linears = nn.ModuleList([nn.Linear(input_ch_views + W, W//2)])
 
         ### Implementation according to the paper
-        # self.views_linears = nn.ModuleList(
-        #     [nn.Linear(input_ch_views + W, W//2)] + [nn.Linear(W//2, W//2) for i in range(D//2)])
+        self.views_linears = nn.ModuleList(
+            [nn.Linear(input_ch_views + W, W//2)] + [nn.Linear(W//2, W//2) for i in range(D//2)])
 
         if use_viewdirs:
             self.feature_linear = nn.Linear(W, W)
@@ -386,6 +414,8 @@ class DirectTemporalNeRF(nn.Module):
         return net_final(h)
 
     def forward(self, x):
+        # print('x.shape:', x.shape)
+        # print('[self.input_ch, self.input_ch_aud, self.input_ch_views]:', [self.input_ch, self.input_ch_aud, self.input_ch_views])
         input_pts, input_aud, input_views = torch.split(x, [self.input_ch, self.input_ch_aud, self.input_ch_views], dim=-1)
         
         # print('='*40)
@@ -426,10 +456,9 @@ class NeRF:
 
 
 # Ray helpers
-def get_rays(H, W, focal, c2w, cx=None, cy=None, device_cur=torch.device('cuda', 0)):
+def get_rays(H, W, focal, c2w, cx=None, cy=None):
     # pytorch's meshgrid has indexing='ij'
-    i, j = torch.meshgrid(torch.linspace(0, W-1, W, device=device_cur, dtype=torch.float32),
-                            torch.linspace(0, H-1, H, device=device_cur, dtype=torch.float32))
+    i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H))
     i = i.t()
     j = j.t()
     if cx is None:
@@ -452,7 +481,7 @@ def get_rays_np(H, W, focal, c2w, cx=None, cy=None):
     if cy is None:
         cy = H*.5
     i, j = np.meshgrid(np.arange(W, dtype=np.float32),
-                       np.arange(H, dtype=np.float32), indexing='xy')
+                        np.arange(H, dtype=np.float32), indexing='xy')
     dirs = np.stack([(i-cx)/focal, -(j-cy)/focal, -np.ones_like(i)], -1)
     # Rotate ray directions from camera frame to the world frame
     # dot product, equals to: [c2w.dot(dir) for dir in dirs]

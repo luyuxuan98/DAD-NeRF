@@ -80,9 +80,14 @@ def load_audface_data(basedir, arg, testskip=1, test_file=None, aud_file=None):
         meta['cx']), float(meta['cy'])
 
     bounding_box=None
-    # print('metas:', metas)
-    if arg.i_embed == 1:
-        bounding_box = get_bbox3d_for_blenderobj(metas["train"], H, W, near=arg.near, far=arg.far)
-    # print('bounding_box:', bounding_box)
+    # 第一次算一下bounding_box，后面直接加载就行
+    if os.path.isfile(os.path.join(arg.datadir, 'bounding_box.pt')) == False:
+        # print('metas:', metas)
+        if arg.i_embed == 1:
+            bounding_box = get_bbox3d_for_blenderobj(metas["train"], H, W, near=arg.near, far=arg.far)
+            torch.save(torch.cat((bounding_box[0], bounding_box[1]), dim=0), arg.datadir + '/bounding_box.pt')
+    else:
+        bounding_box = torch.split(torch.load(arg.datadir + '/bounding_box.pt'), 3, dim=0)
+    print('bounding_box:', bounding_box)
 
     return imgs, poses, auds, bc_img, [H, W, focal, cx, cy], sample_rects, sample_rects, i_split, bounding_box

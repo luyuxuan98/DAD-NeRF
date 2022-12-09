@@ -82,7 +82,19 @@ def batchify(fn, chunk):
         return fn
 
     def ret(inputs):
-        return torch.cat([fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)], 0)
+        # print('inputs.shape:', inputs.shape)
+        hhh_list = []
+        for i in range(0, inputs.shape[0], chunk):
+            # print('i:', i)
+            # print('i+chunk:', i+chunk)
+            inputs_slice = inputs[i:i+chunk]
+            # print('inputs_slice.shape:', inputs_slice.shape)
+            hhh = fn(inputs_slice)
+            hhh_list.append(hhh)
+        # print('finish printing...')
+        # hhh_list = [fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)]
+        return torch.cat(hhh_list, 0)
+        # return torch.cat([fn(inputs[i:i+chunk]) for i in range(0, inputs.shape[0], chunk)], 0)
     return ret
 
 
@@ -98,7 +110,7 @@ def run_network(inputs, viewdirs, aud_para, fn, embed_fn, embeddirs_fn, netchunk
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         embedded = torch.cat([embedded, embedded_dirs], -1)
-
+    # print('embedded.shape:', embedded.shape)
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = torch.reshape(outputs_flat, list(
         inputs.shape[:-1]) + [outputs_flat.shape[-1]])
@@ -127,12 +139,12 @@ def render_dynamic_face(H, W, focal, cx, cy, chunk=1024*32, rays=None, bc_rgb=No
                         **kwargs):
     if c2w is not None:
         # special case to render full image
-        rays_o, rays_d = get_rays(H, W, focal, c2w, cx, cy, c2w.device)
+        rays_o, rays_d = get_rays(H, W, focal, c2w, cx, cy)
         bc_rgb = bc_rgb.reshape(-1, 3)
     else:
         # use provided ray batch
         rays_o, rays_d = rays
-
+    print('use_viewdirs:', use_viewdirs)
     if use_viewdirs:
         # provide ray directions as input
         viewdirs = rays_d
@@ -157,7 +169,10 @@ def render_dynamic_face(H, W, focal, cx, cy, chunk=1024*32, rays=None, bc_rgb=No
     rays = torch.cat([rays_o, rays_d, near, far], -1)
     if use_viewdirs:
         rays = torch.cat([rays, viewdirs], -1)
-
+    print('rays.shape:', rays.shape)
+    print('aud_para.shape:', aud_para.shape)
+    # print('rays.shape:', rays.shape)
+    # print('rays.shape:', rays.shape)
     # Render and reshape
     all_ret = batchify_rays(rays, bc_rgb, aud_para, chunk, **kwargs)
     for k in all_ret:
@@ -260,10 +275,14 @@ def render_path(render_poses, aud_paras, bc_img, hwfcxy,
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
+        print('start render_dynamic_face...')
+        print('aud_paras.shape:', aud_paras.shape)
+        print('aud_paras[i].shape:', aud_paras[i].shape)
         rgb, disp, acc, last_weight, rgb_fg, _ = render_dynamic_face(
             H, W, focal, cx, cy, chunk=chunk, c2w=c2w[:3,
                                                       :4], aud_para=aud_paras[i], bc_rgb=bc_img,
             **render_kwargs)
+        print('finish render_dynamic_face...')
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
         last_weights.append(last_weight.cpu().numpy())
@@ -295,8 +314,7 @@ def create_nerf(args, ext, dim_aud, device_spec=torch.device('cuda', 0), with_au
     """
     # embed_fn, input_ch = get_embedder(
     #     args.multires, args.i_embed, device=device_spec)
-    embed_fn, input_ch = get_embedder(
-        args.multires, args.i_embed)
+    embed_fn, input_ch = get_embedder(args.multires, args, args.i_embed)
 
     input_ch_views = 0
     embeddirs_fn = None
@@ -312,11 +330,16 @@ def create_nerf(args, ext, dim_aud, device_spec=torch.device('cuda', 0), with_au
     #                  output_ch=output_ch, skips=skips,
     #                  input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device_spec)
     model = NeRF.get_by_name(args.nerf_type, D=args.netdepth, W=args.netwidth,
-                input_ch=input_ch, input_ch_aud=dim_aud, output_ch=output_ch, skips=skips,
+                input_ch=input_ch, input_ch_aud=args.dim_aud, output_ch=output_ch, skips=skips,
                 input_ch_views=input_ch_views,
                 use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
-    # print('model:', model)
+    print('model:', model)
     grad_vars = list(model.parameters())
+
+    # 把embdding层加入优化器中算梯度
+    if args.i_embed == 1:
+        grad_vars += list(embed_fn.parameters())
+    
 
     model_fine = None
     if args.N_importance > 0:
@@ -325,15 +348,16 @@ def create_nerf(args, ext, dim_aud, device_spec=torch.device('cuda', 0), with_au
         #                       output_ch=output_ch, skips=skips,
         #                       input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device_spec)
         model_fine = NeRF.get_by_name(args.nerf_type, D=args.netdepth, W=args.netwidth,
-                input_ch=input_ch, input_ch_aud=dim_aud, output_ch=output_ch, skips=skips,
+                input_ch=input_ch, input_ch_aud=args.dim_aud, output_ch=output_ch, skips=skips,
                 input_ch_views=input_ch_views,
                 use_viewdirs=args.use_viewdirs, embed_fn=embed_fn).to(device)
-        # print('model_fine:', model_fine)
+        print('model_fine:', model_fine)
         grad_vars += list(model_fine.parameters())
 
     def network_query_fn(inputs, viewdirs, aud_para, network_fn): \
         return run_network(inputs, viewdirs, aud_para, network_fn,
-                           embed_fn=embed_fn, embeddirs_fn=embeddirs_fn, netchunk=args.netchunk)
+                            embed_fn=embed_fn, embeddirs_fn=embeddirs_fn, netchunk=args.netchunk)
+
 
     # Create optimizer
     optimizer = torch.optim.Adam(
@@ -355,8 +379,10 @@ def create_nerf(args, ext, dim_aud, device_spec=torch.device('cuda', 0), with_au
     print('Found ckpts', ckpts)
     learned_codes_dict = None
     AudNet_state = None
-    optimizer_aud_state = None
     AudAttNet_state = None
+    optimizer_aud_state = None
+    embed_fn_state = None
+
     if len(ckpts) > 0 and not args.no_reload:
         ckpt_path = ckpts[-1]
         print('Reloading from', ckpt_path)
@@ -374,7 +400,9 @@ def create_nerf(args, ext, dim_aud, device_spec=torch.device('cuda', 0), with_au
         model.load_state_dict(ckpt['network_fn_state_dict'])
         if model_fine is not None:
             model_fine.load_state_dict(ckpt['network_fine_state_dict'])
-
+        # 加载hash部分
+        if args.i_embed == 1:
+            embed_fn.load_state_dict(ckpt['embed_fn_state_dict'])
     ##########################
 
     render_kwargs_train = {
@@ -388,6 +416,8 @@ def create_nerf(args, ext, dim_aud, device_spec=torch.device('cuda', 0), with_au
         'white_bkgd': args.white_bkgd,
         'raw_noise_std': args.raw_noise_std,
     }
+    if args.i_embed == 1:
+        render_kwargs_train['embed_fn'] = embed_fn
 
     # NDC only good for LLFF-style forward facing data
     if args.dataset_type != 'llff' or args.no_ndc:
@@ -463,6 +493,7 @@ def render_rays(ray_batch,
                 network_fn,
                 network_query_fn,
                 N_samples,
+                embed_fn=None,
                 retraw=False,
                 lindisp=False,
                 perturb=0.,
@@ -635,7 +666,9 @@ def config_parser():
     parser.add_argument("--use_viewdirs", action='store_false',
                         help='use full 5D input instead of 3D')
     parser.add_argument("--i_embed", type=int, default=0,
-                        help='set 0 for default positional encoding, -1 for none')
+                        help='set 0 for default positional encoding, 1 for hash encoding, -1 for none')
+    parser.add_argument("--i_embed_view", type=int, default=0,
+                        help='set 0 for default positional encoding, 1 for hash encoding, -1 for none')
     parser.add_argument("--multires", type=int, default=10,
                         help='log2 of max freq for positional encoding (3D location)')
     parser.add_argument("--multires_views", type=int, default=4,
@@ -724,6 +757,18 @@ def config_parser():
     parser.add_argument("--i_video",   type=int, default=50000,
                         help='frequency of render_poses video saving')
 
+    # 从hashnerf里移植过来的部分
+    parser.add_argument("--finest_res",   type=int, default=512,
+                        help='finest resolultion for hashed embedding')
+    parser.add_argument("--log2_hashmap_size",   type=int, default=14,
+                        help='log2 of hashmap size')
+    parser.add_argument("--n_levels",   type=int, default=16,
+                        help='Number of levels')                    
+    parser.add_argument("--sparse-loss-weight", type=float, default=1e-10,
+                        help='learning rate')
+    parser.add_argument("--tv-loss-weight", type=float, default=1e-6,
+                        help='learning rate')
+
     return parser
 
 
@@ -734,9 +779,10 @@ def train():
 
     # Load data
     if args.with_test == 1:
-        poses, auds, bc_img, hwfcxy, aud_ids, torso_pose = \
-            load_test_data(args.datadir, args.aud_file,
-                           args.test_pose_file, args.testskip, args.test_size, args.aud_start)
+        poses, auds, bc_img, hwfcxy, aud_ids, torso_pose, bounding_box = \
+            load_test_data(args, args.datadir, args.aud_file,
+                            args.test_pose_file, args.testskip, args.test_size, args.aud_start)
+        args.bounding_box = bounding_box
         torso_pose = torch.as_tensor(torso_pose).to(device_torso).float()
         com_images = np.zeros(1)
     else:
@@ -869,12 +915,19 @@ def train():
             vid_out = cv2.VideoWriter(os.path.join(testsavedir, 'result.avi'),
                                         cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 25, (W, H))
             for j in range(poses.shape[0]):
+                print('auds_val.shape:', auds_val.shape)
+                print('auds_val[j:j+1].shape:', auds_val[j:j+1].shape)
                 rgbs, disps, last_weights, rgb_fgs = \
                     render_path(adjust_poses[j:j+1], auds_val[j:j+1],
                                 bc_img, hwfcxy, args.chunk, render_kwargs_test)
+                print('signal.shape:', signal.shape)
+                print('signal[j:j+1].shape:', signal[j:j+1].shape)
+                # rgbs_torso, disps_torso, last_weights_torso, rgb_fgs_torso = \
+                #     render_path(torso_pose.unsqueeze(
+                #         0), signal[j:j+1], bc_img.to(device_torso), hwfcxy, args.chunk, render_kwargs_test_torso)
                 rgbs_torso, disps_torso, last_weights_torso, rgb_fgs_torso = \
                     render_path(torso_pose.unsqueeze(
-                        0), signal[j:j+1], bc_img.to(device_torso), hwfcxy, args.chunk, render_kwargs_test_torso)
+                        0), auds_val[j:j+1], bc_img.to(device_torso), hwfcxy, args.chunk, render_kwargs_test_torso)
                 rgbs_com = rgbs*last_weights_torso[..., None] + rgb_fgs_torso
                 rgb8 = to8b(rgbs_com[0])
                 vid_out.write(rgb8[:, :, ::-1])

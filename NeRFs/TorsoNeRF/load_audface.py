@@ -5,7 +5,7 @@ import imageio
 import json
 import torch.nn.functional as F
 import cv2
-
+from utils import get_bbox3d_for_blenderobj
 
 def load_audface_data(basedir, testskip=1, test_file=None, aud_file=None, test_size=-1):
     if test_file is not None:
@@ -84,7 +84,7 @@ def load_audface_data(basedir, testskip=1, test_file=None, aud_file=None, test_s
         sample_rects, i_split
 
 
-def load_test_data(basedir, aud_file, test_pose_file='transforms_train.json',
+def load_test_data(arg, basedir, aud_file, test_pose_file='transforms_train.json',
                    testskip=1, test_size=-1, aud_start=0):
     # print('basedir:', basedir)
     # print('aud_file:', aud_file)
@@ -158,4 +158,17 @@ def load_test_data(basedir, aud_file, test_pose_file='transforms_train.json',
     fp.writeframes(aud_cutted.tobytes())
     fp.close()
 
-    return poses, auds, bc_img, [H, W, focal, cx, cy], aud_ids, torso_pose
+
+
+
+    bounding_box=None
+    # 第一次算一下bounding_box，后面直接加载就行
+    if os.path.isfile(os.path.join(arg.datadir, 'bounding_box.pt')) == False:
+        raise
+    else:
+        bounding_box = torch.split(torch.load(arg.datadir + '/bounding_box.pt'), 3, dim=0)
+    print('bounding_box:', bounding_box)
+
+
+
+    return poses, auds, bc_img, [H, W, focal, cx, cy], aud_ids, torso_pose, bounding_box

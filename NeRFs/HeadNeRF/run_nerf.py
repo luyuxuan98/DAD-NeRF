@@ -60,6 +60,7 @@ def batchify_rays(rays_flat, bc_rgb, aud_para, chunk=1024*32, **kwargs):
     """
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
+        # print('kwargs:', kwargs)
         ret = render_rays(rays_flat[i:i+chunk], bc_rgb[i:i+chunk],
                           aud_para, **kwargs)
         for k in ret:
@@ -415,6 +416,7 @@ def render_rays(ray_batch,
                 network_fn,
                 network_query_fn,
                 N_samples,
+                embed_fn=None,
                 retraw=False,
                 lindisp=False,
                 perturb=0.,
@@ -742,7 +744,7 @@ def train():
     print('args.use_wandb:', args.use_wandb)
     if args.use_wandb:
         import wandb
-        wandb_run = wandb.init(project='DAD-NeRF_Talking_Head', name=args.expname + '', notes='dnerf english with normal encoding, but larger network', tags=[str(args.expname), str(args.nerf_type), str(args.i_embed) + '(i_embed)'], config=args)
+        wandb_run = wandb.init(project='DAD-NeRF_Talking_Head', name=args.expname + '', notes='dnerf english with large hash encoding, but larger network', tags=[str(args.expname), str(args.nerf_type), str(args.i_embed) + '(i_embed)'], config=args)
         # wandb_run._label(repo='CycleGAN-and-pix2pix')
 
 
