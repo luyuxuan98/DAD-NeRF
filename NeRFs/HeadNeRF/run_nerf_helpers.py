@@ -414,7 +414,7 @@ class DirectTemporalNeRF(nn.Module):
         return net_final(h)
 
     def forward(self, x):
-        print('x.shape:', x.shape)
+        # print('x.shape:', x.shape)
         input_pts, input_aud, input_views = torch.split(x, [self.input_ch, self.input_ch_aud, self.input_ch_views], dim=-1)
         
         # print('='*40)

@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from tqdm import tqdm, trange
 from natsort import natsorted
 from run_nerf_helpers import *
-from piqa import PSNR, SSIM, LPIPS
+# from piqa import PSNR, SSIM, LPIPS
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # np.random.seed(0)
@@ -688,6 +688,8 @@ def config_parser():
                         help='frequency of render_poses video saving')
     parser.add_argument("--use_wandb", action='store_true',
                         help='using wandb to log')
+    parser.add_argument("--wandb_note", type=str, default='',
+                        help='wandb note')
 
     # 从hashnerf里移植过来的部分
     parser.add_argument("--finest_res",   type=int, default=512,
@@ -744,7 +746,7 @@ def train():
     print('args.use_wandb:', args.use_wandb)
     if args.use_wandb:
         import wandb
-        wandb_run = wandb.init(project='DAD-NeRF_Talking_Head', name=args.expname + '', notes='dnerf english with large hash encoding, but larger network', tags=[str(args.expname), str(args.nerf_type), str(args.i_embed) + '(i_embed)'], config=args)
+        wandb_run = wandb.init(project='DAD-NeRF_Talking_Head', name=args.expname + '', notes=args.wandb_note, tags=[str(args.expname), str(args.nerf_type), str(args.i_embed) + '(i_embed)'], config=args)
         # wandb_run._label(repo='CycleGAN-and-pix2pix')
 
 

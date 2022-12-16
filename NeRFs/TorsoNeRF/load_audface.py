@@ -163,11 +163,12 @@ def load_test_data(arg, basedir, aud_file, test_pose_file='transforms_train.json
 
     bounding_box=None
     # 第一次算一下bounding_box，后面直接加载就行
-    if os.path.isfile(os.path.join(arg.datadir, 'bounding_box.pt')) == False:
-        raise
-    else:
-        bounding_box = torch.split(torch.load(arg.datadir + '/bounding_box.pt'), 3, dim=0)
-    print('bounding_box:', bounding_box)
+    if arg.i_embed == 1:
+        if os.path.isfile(os.path.join(arg.datadir, 'bounding_box.pt')) == False:
+            raise
+        else:
+            bounding_box = torch.split(torch.load(arg.datadir + '/bounding_box.pt'), 3, dim=0)
+        print('bounding_box:', bounding_box)
 
 
 

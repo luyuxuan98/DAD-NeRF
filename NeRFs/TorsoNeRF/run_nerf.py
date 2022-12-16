@@ -144,7 +144,7 @@ def render_dynamic_face(H, W, focal, cx, cy, chunk=1024*32, rays=None, bc_rgb=No
     else:
         # use provided ray batch
         rays_o, rays_d = rays
-    print('use_viewdirs:', use_viewdirs)
+    # print('use_viewdirs:', use_viewdirs)
     if use_viewdirs:
         # provide ray directions as input
         viewdirs = rays_d
@@ -169,8 +169,8 @@ def render_dynamic_face(H, W, focal, cx, cy, chunk=1024*32, rays=None, bc_rgb=No
     rays = torch.cat([rays_o, rays_d, near, far], -1)
     if use_viewdirs:
         rays = torch.cat([rays, viewdirs], -1)
-    print('rays.shape:', rays.shape)
-    print('aud_para.shape:', aud_para.shape)
+    # print('rays.shape:', rays.shape)
+    # print('aud_para.shape:', aud_para.shape)
     # print('rays.shape:', rays.shape)
     # print('rays.shape:', rays.shape)
     # Render and reshape
@@ -275,14 +275,14 @@ def render_path(render_poses, aud_paras, bc_img, hwfcxy,
     for i, c2w in enumerate(tqdm(render_poses)):
         print(i, time.time() - t)
         t = time.time()
-        print('start render_dynamic_face...')
-        print('aud_paras.shape:', aud_paras.shape)
-        print('aud_paras[i].shape:', aud_paras[i].shape)
+        # print('start render_dynamic_face...')
+        # print('aud_paras.shape:', aud_paras.shape)
+        # print('aud_paras[i].shape:', aud_paras[i].shape)
         rgb, disp, acc, last_weight, rgb_fg, _ = render_dynamic_face(
             H, W, focal, cx, cy, chunk=chunk, c2w=c2w[:3,
                                                       :4], aud_para=aud_paras[i], bc_rgb=bc_img,
             **render_kwargs)
-        print('finish render_dynamic_face...')
+        # print('finish render_dynamic_face...')
         rgbs.append(rgb.cpu().numpy())
         disps.append(disp.cpu().numpy())
         last_weights.append(last_weight.cpu().numpy())
@@ -777,6 +777,12 @@ def train():
     parser = config_parser()
     args = parser.parse_args()
 
+    if args.nerf_type == 'd-nerf':
+        if args.i_embed==1:
+            args.expname += "_hashXYZ"
+        elif args.i_embed==0:
+            args.expname += "_posXYZ"
+            
     # Load data
     if args.with_test == 1:
         poses, auds, bc_img, hwfcxy, aud_ids, torso_pose, bounding_box = \
@@ -915,20 +921,33 @@ def train():
             vid_out = cv2.VideoWriter(os.path.join(testsavedir, 'result.avi'),
                                         cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), 25, (W, H))
             for j in range(poses.shape[0]):
-                print('auds_val.shape:', auds_val.shape)
-                print('auds_val[j:j+1].shape:', auds_val[j:j+1].shape)
+                # print('auds_val.shape:', auds_val.shape)
+                # print('auds_val[j:j+1].shape:', auds_val[j:j+1].shape)
                 rgbs, disps, last_weights, rgb_fgs = \
                     render_path(adjust_poses[j:j+1], auds_val[j:j+1],
                                 bc_img, hwfcxy, args.chunk, render_kwargs_test)
-                print('signal.shape:', signal.shape)
-                print('signal[j:j+1].shape:', signal[j:j+1].shape)
+                # print('signal.shape:', signal.shape)
+                # print('signal[j:j+1].shape:', signal[j:j+1].shape)
                 # rgbs_torso, disps_torso, last_weights_torso, rgb_fgs_torso = \
                 #     render_path(torso_pose.unsqueeze(
                 #         0), signal[j:j+1], bc_img.to(device_torso), hwfcxy, args.chunk, render_kwargs_test_torso)
+                '''
                 rgbs_torso, disps_torso, last_weights_torso, rgb_fgs_torso = \
                     render_path(torso_pose.unsqueeze(
                         0), auds_val[j:j+1], bc_img.to(device_torso), hwfcxy, args.chunk, render_kwargs_test_torso)
                 rgbs_com = rgbs*last_weights_torso[..., None] + rgb_fgs_torso
+                '''
+                print('rgbs.shape:', rgbs.shape)
+                full_head = np.ones_like(rgbs)
+                print('full_head.shape:', full_head.shape)
+                print('full_head[..., 0].shape:', full_head[..., 0].shape)
+                # rgbs_com = rgbs*full_head[..., 0].un
+                rgbs_com = rgbs
+                # print('last_weights_torso[..., None].shape:', last_weights_torso[..., None].shape)
+                # print('last_weights_torso[..., None]:', last_weights_torso[..., None])
+                # print('rgb_fgs_torso.shape:', rgb_fgs_torso.shape)
+                # print('rgb_fgs_torso:', rgb_fgs_torso)
+                # rgbs_com = rgbs*last_weights_torso[..., None]
                 rgb8 = to8b(rgbs_com[0])
                 vid_out.write(rgb8[:, :, ::-1])
                 os.makedirs(testsavedir + '/render_imgs', exist_ok=True)
